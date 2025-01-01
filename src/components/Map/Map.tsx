@@ -3,25 +3,22 @@ import {MapContainer, Polygon, Popup, TileLayer} from "react-leaflet";
 import poly from '../../assets/poly.json'
 import {Fragment} from "react";
 
-// SM: By using the filter there + filtering by key what ends up happening is that the last poly is rendered over
-// the top of every other poly, causing the popup to **always** show the last poly rendered
-// TODO: Fix this
 const addGeoData = (props:MapProps)=> {
     return (
         <Fragment>
             {
-                poly.features.map((feature) =>
-
-                    // GeoJson is
+                poly.features.filter((polygon) => parseInt(polygon.properties.index) < props.filterVal).map((feature) =>
+                    //SM: combo key forces refresh of all polys on slider refresh
+                    // otherwise last poly (Biggest) is overlaid over all the small ones breaking hover/click function
                     <Polygon className={`z-${100/feature.properties.time}`} positions={feature.geometry.coordinates.map((polygon) => polygon.map(v => [v[1], v[0]]))}
-                             key={feature.properties.index}
+                             key={`${feature.properties.index}_${props.filterVal}`}
                              pathOptions={{
                                  color: `rgba(0, 0, 0, 0.01)`,
                                  fillColor: `rgba(${feature.properties.r * 256},${feature.properties.g * 256},${feature.properties.b * 256},0.5)`,
                                  outline: 0
                              }}>
                         <Popup>{feature.properties.time}</Popup>
-                    </Polygon>).filter((polygon) => parseInt(polygon.key) < props.filterVal)
+                    </Polygon>)
 
             }
         </Fragment>
@@ -35,6 +32,7 @@ interface MapProps {
 }
 
 const Map = (props: MapProps) => {
+    console.log(addGeoData(props))
     return (
         <div className={"h-screen"}>
 
