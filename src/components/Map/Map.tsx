@@ -10,7 +10,7 @@ const addGeoData = (props:MapProps)=> {
                 poly.features.filter((polygon) => parseInt(polygon.properties.index) < props.filterVal).map((feature) =>
                     //SM: combo key forces refresh of all polys on slider refresh
                     // otherwise last poly (Biggest) is overlaid over all the small ones breaking hover/click function
-                    <Polygon className={`z-${100/feature.properties.time}`} positions={feature.geometry.coordinates.map((polygon) => polygon.map(v => [v[1], v[0]]))}
+                    <Polygon positions={feature.geometry.coordinates.map((polygon) => polygon.map(v => [v[1], v[0]]))}
                              key={`${feature.properties.index}_${props.filterVal}`}
                              pathOptions={{
                                  color: `rgba(0, 0, 0, 0.01)`,
