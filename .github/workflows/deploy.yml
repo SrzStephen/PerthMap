@@ -19,6 +19,8 @@ jobs:
           node-version: 'lts/jod'
       - name: Lint
         run: npm run lint
+      - name: Test
+        run: npm run test
       - name: Build project
         run: npm run build
       - name: Upload production-ready build files
