@@ -5,16 +5,16 @@ import {useState} from "react";
 
 
 function App() {
-    const [distanceslider, setdistanceslider] = useState(90)
+    const [distanceslider, setdistanceslider] = useState<number[]>([90])
     return (
         <div>
             <p className={"bg-amber-400 text-3xl font-bold underline"}>aaa</p>
             <div className={"flex"}>
                 <div className={"flex-auto w-3/4"}>
-                    <Map filterVal={distanceslider} filterCB={setdistanceslider}/>
+                    <Map filterVal={distanceslider[0]} filterCB={(value: number[]) => setdistanceslider(value)}/>
                 </div>
                 <div className={"flex-auto"}>
-                    <SidePanel filterVal={distanceslider} filterCB={setdistanceslider}/>
+                    <SidePanel filterVal={distanceslider[0]} filterCB={(value: number[]) => setdistanceslider(value)}/>
                 </div>
 
             </div>
