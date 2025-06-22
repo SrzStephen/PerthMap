@@ -1,8 +1,4 @@
 name: Deploy
-
-permissions:
-  actions: read
-
 on:
   push:
     branches:
@@ -35,7 +31,9 @@ jobs:
       - name: Upload production-ready build files
         uses: actions/upload-artifact@v4
         with:
-          path: ./dist
+          name: built_page
+          path: dist
+          if-no-files-found: error
 
   deploy:
     environment:
@@ -56,7 +54,8 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          path: ./dist
+          name: built_page
+          path: dist
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
         with:
