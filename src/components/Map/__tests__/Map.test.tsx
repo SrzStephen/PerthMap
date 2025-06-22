@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import Map from '../Map';
-import {JSX} from "react";
 
 // Mock the poly.json import
 vi.mock('../../../assets/poly.json', () => ({
@@ -14,7 +13,7 @@ vi.mock('../../../assets/poly.json', () => ({
         type: "Feature",
         properties: {
           index: 1,
-          time: "10",
+          time: "10 minutes",
           r: 0.1,
           g: 0.5,
           b: 0.9
@@ -42,7 +41,6 @@ vi.mock('react-leaflet', () => {
   const WMSTileLayer = vi.fn(() => <div data-testid="wms-tile-layer"></div>);
   const Polygon = vi.fn(({ children }: { children: React.ReactNode }) => <div data-testid="polygon">{children}</div>);
   const Popup = vi.fn(({ children }: { children: React.ReactNode }) => <div data-testid="popup">{children}</div>);
-  const Marker = vi.fn(({ children }: { children: React.ReactNode }) => <div data-testid="marker">{children}</div>);
 
   return {
     MapContainer,
@@ -51,8 +49,7 @@ vi.mock('react-leaflet', () => {
     TileLayer,
     WMSTileLayer,
     Polygon,
-    Popup,
-    Marker
+    Popup
   };
 });
 
@@ -82,12 +79,7 @@ describe('Map Component', () => {
     // Since we're mocking, we can't directly test the filtering logic
     // But we can verify that the component renders with the mock data
     expect(screen.getByTestId('polygon')).toBeInTheDocument();
-
-    // Get all popups
-    const popups = screen.getAllByTestId('popup');
-
-    // Check if any popup has the correct content
-    const hasCorrectPopup = popups.some(popup => popup.textContent === '10 Minutes');
-    expect(hasCorrectPopup).toBe(true);
+    expect(screen.getByTestId('popup')).toBeInTheDocument();
+    expect(screen.getByTestId('popup')).toHaveTextContent('10 minutes');
   });
 });

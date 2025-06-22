@@ -3,10 +3,13 @@ name: Deploy
 on:
   push:
     branches:
-      - main
+      - '*'
+  pull_request:
+    types: [ closed ]
+    branches:
+      - develop
 
 jobs:
-
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -16,7 +19,10 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/jod'
+          node-version: 23
+          cache: 'npm'
+      - name: Install
+        run: npm ci --include=dev
       - name: Lint
         run: npm run lint
       - name: Test
@@ -31,12 +37,13 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: build
+    needs:
+      - build
     permissions:
       pages: write      # to deploy to Pages
       id-token: write   # to verify the deployment originates from an appropriate source
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.event.pull_request.merged == true && github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v3
