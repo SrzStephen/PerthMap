@@ -51,12 +51,7 @@ jobs:
     runs-on: ubuntu-latest
 #    if: github.event.pull_request.merged == true && github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
     steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: built_page
-          path: dist
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
         with:
-          artifact_name: ./dist
+          artifact_name: built_page
