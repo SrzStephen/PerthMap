@@ -1,4 +1,4 @@
-import {LayerGroup, LayersControl, MapContainer, Polygon, Popup, TileLayer} from "react-leaflet";
+import {LayerGroup, LayersControl, MapContainer, Marker, Polygon, Popup, TileLayer} from "react-leaflet";
 
 import poly from '../../assets/poly.json'
 import {Fragment} from "react";
@@ -50,6 +50,9 @@ const Map = (props: MapProps) => {
                     <LayersControl.Overlay checked name="Distance to Perth">
                         <LayerGroup>
                             {addGeoData(props)}
+                             <Marker position={[-31.955612,115.860234]}>
+                             <Popup>Work</Popup>
+                             </Marker>
                         </LayerGroup>
                     </LayersControl.Overlay>
                     {/*<WMSTileLayer url={"https://public-services.slip.wa.gov.au/public/services/SLIP_Public_Services/Property_and_Planning/MapServer/WMSServer"} params={{layers:78}}/>*/}
