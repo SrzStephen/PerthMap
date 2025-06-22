@@ -14,4 +14,4 @@ I couldn't find a good source of truth for "How long will it take me to get to w
 * React-Leaflet + Vite + Tailwind for data presentation
 
 # Data
-See [data_gen](data_gen/README.md)
+See [data_gen](data_gen/README.md) for how to generate data or [see the jupyter notebook](data_gen/generate_data.ipynb).
