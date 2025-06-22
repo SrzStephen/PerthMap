@@ -28,6 +28,10 @@ jobs:
         run: npm run test
       - name: Build project
         run: npm run build
+        env:
+          NEW_RELIC_ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID }}
+          NEW_RELIC_AGENT_ID: ${{ secrets.NEW_RELIC_AGENT_ID }}
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
       - name: Upload production-ready build files
         uses: actions/upload-pages-artifact@v3
         with:
