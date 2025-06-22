@@ -23,6 +23,10 @@ jobs:
           cache: 'npm'
       - name: Install
         run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm run test
       - name: Build project
         run: npm run build
       - name: Upload production-ready build files
@@ -31,21 +35,10 @@ jobs:
           name: production-files
           path: ./dist
 
-  test:
-    name: Test
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Lint
-        run: npm run lint
-      - name: Test
-        run: npm run test
-
   deploy:
     name: Deploy
     needs:
       - build
-      - test
     permissions:
       pages: write      # to deploy to Pages
       id-token: write   # to verify the deployment originates from an appropriate source
