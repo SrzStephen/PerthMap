@@ -1,0 +1,16 @@
+[project]
+name = "perth-map"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "contextily>=1.6.2",
+    "geopandas>=1.1.0",
+    "gtfs-kit>=10.3.1",
+    "notebook>=7.4.3",
+    "pandas>=2.3.0",
+    "r5py==0.1.1",
+    "shapely>=2.1.1",
+    "tqdm>=4.67.1",
+]
