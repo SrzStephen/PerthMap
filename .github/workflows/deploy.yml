@@ -32,7 +32,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: built_page
-          path: dist
+          path: ./dist
           if-no-files-found: error
 
   deploy:
