@@ -47,7 +47,7 @@ jobs:
     if: github.event.pull_request.merged == true && github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
     steps:
       - name: Download artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: production-files
           path: ./dist
