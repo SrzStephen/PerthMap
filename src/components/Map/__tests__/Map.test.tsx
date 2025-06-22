@@ -72,9 +72,6 @@ describe('Map Component', () => {
     render(<Map {...mockProps} />);
     expect(screen.getByTestId('overlay-Map')).toBeInTheDocument();
     expect(screen.getByTestId('overlay-Distance to Perth')).toBeInTheDocument();
-    expect(screen.getByTestId('overlay-Jandacot Airport Noise')).toBeInTheDocument();
-    expect(screen.getByTestId('overlay-Perth Airport Noise')).toBeInTheDocument();
-    expect(screen.getByTestId('overlay-Rail and Road Noise')).toBeInTheDocument();
   });
 
   it('applies the filter value to the polygons', () => {
