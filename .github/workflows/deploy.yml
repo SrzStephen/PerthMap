@@ -48,6 +48,8 @@ jobs:
     permissions:
       pages: write      # to deploy to Pages
       id-token: write   # to verify the deployment originates from an appropriate source
+      actions: read
+
     runs-on: ubuntu-latest
 #    if: github.event.pull_request.merged == true && github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
     steps:
