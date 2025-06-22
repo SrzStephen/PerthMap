@@ -3,7 +3,6 @@ import SidePanel from "./components/Map/SidePanel.tsx";
 import "leaflet/dist/leaflet.css"
 import {useState} from "react";
 
-
 function App() {
     const [distanceslider, setdistanceslider] = useState<number[]>([90])
     return (

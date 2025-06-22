@@ -2,6 +2,9 @@ import {LayerGroup, LayersControl, MapContainer, Marker, Polygon, Popup, TileLay
 
 import poly from '../../assets/poly.json'
 import {Fragment} from "react";
+import L from 'leaflet'
+
+L.Icon.Default.imagePath = 'img/'
 
 const addGeoData = (props: MapProps) => {
     return (
