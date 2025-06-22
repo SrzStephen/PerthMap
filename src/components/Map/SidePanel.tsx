@@ -8,8 +8,8 @@ interface SidePanelProps {
 const SidePanel = ({filterVal, filterCB}: SidePanelProps) => {
 
     return (
-        <div className={"flex-col left-0 h-screen m-0 flex bg-muted p-4"}>
-            <p >Time {filterVal}</p>
+        <div className={"bg-slate-100 flex-col left-0 h-screen m-0 flex p-4"}>
+            <p >{filterVal} Minutes to Perth</p>
             <Slider defaultValue={[filterVal]} min={0} max={100} step={5} onValueChange={filterCB}></Slider>
         </div>
 

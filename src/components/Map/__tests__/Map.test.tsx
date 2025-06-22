@@ -29,7 +29,8 @@ vi.mock('../../../assets/poly.json', () => ({
 // Mock react-leaflet components
 vi.mock('react-leaflet', () => {
   const MapContainer = vi.fn(({ children }: { children: React.ReactNode }) => <div data-testid="map-container">{children}</div>);
-  const LayersControl = vi.fn(({ children }: { children: React.ReactNode }) => <div data-testid="layers-control">{children}</div>) as {
+  const LayersControl = vi.fn(({children}: { children: React.ReactNode; }) => <div
+      data-testid="layers-control">{children}</div>) as unknown as {
     (props: { children: React.ReactNode }): JSX.Element;
     Overlay: (props: { children: React.ReactNode; name: string }) => JSX.Element;
   };

@@ -2,6 +2,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { Slider } from '../slider';
 
+// Extend Jest's expect with @testing-library/jest-dom matchers
+import '@testing-library/jest-dom';
+
+
 // Mock the cn utility function
 vi.mock('../../../lib/utils', () => ({
   cn: (...inputs: never[]) => inputs.join(' ')

@@ -1,4 +1,4 @@
-import {LayerGroup, LayersControl, MapContainer, Polygon, Popup, TileLayer, WMSTileLayer} from "react-leaflet";
+import {LayerGroup, LayersControl, MapContainer, Polygon, Popup, TileLayer} from "react-leaflet";
 
 import poly from '../../assets/poly.json'
 import {Fragment} from "react";
@@ -18,7 +18,7 @@ const addGeoData = (props: MapProps) => {
                             fillColor: `rgba(${feature.properties.r * 256},${feature.properties.g * 256},${feature.properties.b * 256},0.5)`,
                             stroke: false
                         }}>
-                        <Popup>{feature.properties.time}</Popup>
+                        <Popup>{feature.properties.time} Minutes</Popup>
                     </Polygon>)
 
             }
@@ -50,35 +50,6 @@ const Map = (props: MapProps) => {
                     <LayersControl.Overlay checked name="Distance to Perth">
                         <LayerGroup>
                             {addGeoData(props)}
-                        </LayerGroup>
-                    </LayersControl.Overlay>
-
-                    {/*<Polygon positions={poly.features[0].geometry.coordinates} />*/}
-                    {/*<GeoJSON data={poly}></GeoJSON>*/}
-                    {/*https://catalogue.data.wa.gov.au/dataset/state-planning-policy-5-1-land-use-planning-in-the-vicinity-of-perth-airport*/}
-
-                    <LayersControl.Overlay name="Jandacot Airport Noise">
-                        <LayerGroup>
-                            <WMSTileLayer
-                                url={"https://public-services.slip.wa.gov.au/public/services/SLIP_Public_Services/Property_and_Planning/MapServer/WMSServer"}
-                                opacity={0.3}
-                                params={{layers: "56"}}/>
-                        </LayerGroup>
-                    </LayersControl.Overlay>
-                    <LayersControl.Overlay name="Perth Airport Noise">
-                        <LayerGroup>
-                            <WMSTileLayer
-                                url={"https://public-services.slip.wa.gov.au/public/services/SLIP_Public_Services/Property_and_Planning/MapServer/WMSServer"}
-                                opacity={0.3}
-                                params={{layers: "57"}}/>
-                        </LayerGroup>
-                    </LayersControl.Overlay>
-                    <LayersControl.Overlay name="Rail and Road Noise">
-                        <LayerGroup>
-                            <WMSTileLayer
-                                url={"https://public-services.slip.wa.gov.au/public/services/SLIP_Public_Services/Property_and_Planning/MapServer/WMSServer"}
-                                opacity={0.3}
-                                params={{layers: "99"}}/>
                         </LayerGroup>
                     </LayersControl.Overlay>
                     {/*<WMSTileLayer url={"https://public-services.slip.wa.gov.au/public/services/SLIP_Public_Services/Property_and_Planning/MapServer/WMSServer"} params={{layers:78}}/>*/}
