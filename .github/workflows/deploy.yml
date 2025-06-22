@@ -22,7 +22,7 @@ jobs:
           node-version: 23
           cache: 'npm'
       - name: Install
-        run: npm ci
+        run: npm ci --include=dev
       - name: Lint
         run: npm run lint
       - name: Test
