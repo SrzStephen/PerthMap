@@ -19,8 +19,9 @@ vi.mock('react-leaflet', () => {
         Popup: ({children, pane}: { children?: ReactNode; pane?: string }) =>
             <div data-testid="popup" data-pane={pane}>{children}</div>,
         Marker: () => <div data-testid="marker"/>,
-        Polygon: ({children, pathOptions}: { children?: ReactNode; pathOptions: { fillColor: string } }) =>
-            <div data-testid="polygon" data-fill={pathOptions.fillColor}>{children}</div>,
+        // Only painted (fill: true) bands are visible/clickable, so the mock renders only those.
+        Polygon: ({children, pathOptions}: { children?: ReactNode; pathOptions: { fill: boolean; fillColor: string } }) =>
+            pathOptions.fill ? <div data-testid="polygon" data-fill={pathOptions.fillColor}>{children}</div> : null,
     }
 })
 
@@ -37,6 +38,7 @@ describe('TravelTimeMap', () => {
         expect(popups()).toEqual(['Under 10 min'])
     })
 
+    // Real paint order is covered by TravelTimeMap.leaflet.test.tsx; this checks React-level ordering only.
     it('keeps largest-first order across slider changes', () => {
         const {rerender} = render(<TravelTimeMap minutes={85}/>)
         rerender(<TravelTimeMap minutes={45}/>)

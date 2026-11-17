@@ -1,6 +1,6 @@
 import {MapContainer, Pane, Polygon, Popup, TileLayer, ZoomControl} from 'react-leaflet'
 import poly from '../../assets/poly.json'
-import {bandColor, bandLabel, parseBands, visibleBands} from '../../lib/bands'
+import {bandColor, bandLabel, parseBands} from '../../lib/bands'
 import {CbdMarker} from './CbdMarker'
 
 const BANDS = parseBands(poly)
@@ -17,14 +17,21 @@ export function TravelTimeMap({minutes}: { minutes: number }) {
         <MapContainer center={[-31.9514, 115.8617]} zoom={12} zoomControl={false} maxZoom={16} minZoom={9} className="h-full w-full">
             <TileLayer url={BASE_TILES} attribution={ATTRIBUTION} maxZoom={16}/>
             <ZoomControl position="bottomright"/>
-            {/* Bands are opaque inside a translucent pane: smaller bands (drawn last) cover larger ones,
-                so each area shows exactly one flat colour instead of stacked alpha. */}
+            {/* Bands are opaque inside a translucent pane: smaller bands (later in the SVG) cover larger ones,
+                so each area shows exactly one flat colour instead of stacked alpha. Every band stays mounted in
+                fixed largest-first order — Leaflet appends newly added paths last, so mounting on demand would
+                paint a newly revealed outer band over the inner ones. Hidden bands just drop their fill. */}
             <Pane name="bands" style={{zIndex: 350, opacity: 0.65}}>
-                {visibleBands(BANDS, minutes).map(band => (
+                {BANDS.map(band => (
                     <Polygon
                         key={band.time}
                         positions={band.positions}
-                        pathOptions={{stroke: false, fillColor: bandColor(band.time), fillOpacity: 1}}
+                        pathOptions={{
+                            stroke: false,
+                            fill: band.time <= minutes,
+                            fillColor: bandColor(band.time),
+                            fillOpacity: 1,
+                        }}
                     >
                         <Popup pane="popupPane">{bandLabel(band.time)}</Popup>
                     </Polygon>
