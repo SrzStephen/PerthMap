@@ -1,45 +1,37 @@
 # About
-Jupyter notebook file, generates a `geojson` file that you can then use on the main map app.
-
+Generates the travel-time isochrones (`poly.json`) shown on the map, using the
+[MOTIS](https://github.com/motis-project/motis) public-transport router, all in Docker.
 
 # How
-
-## Prepare OpenStreetMaps Data
-[OpenStreetMaps Oceania dataset](https://download.geofabrik.de/australia-oceania.html) dataset covers all 
-all of Australia which will make the calculations you need to do very slow.
-
-Trim this dataset to a bounding box `-b` that you care about using [omsctools](https://github.com/ramunasd/osmctools)
-```
-apt install osmctools
-osmconvert australia-latest.osm.pbf  -b=109.7340429,-30.3448778,109.7298855,-31.8727467 --complete-ways --complete-multipolygons -o=data/cropped.osm.pbf
+```sh
+cd data_gen
+docker compose up --build route      # prepare -> MOTIS import -> MOTIS server -> route
+docker compose run --rm isochrones   # grid travel times -> isochrone polygons
+cp data/results/poly.json ../src/assets/poly.json
+docker compose down
 ```
 
-## Prepare Transperth Data
-Same deal as OpenstreetMap, you'll need to trim the GTFS feed so you're not calculating things you dont care about.
-Make this bounding box slightly bigger so that the OpenstreetMaps bounding box fits in its entirety.
+| Stage | Container | What it does |
+|---|---|---|
+| `prepare` | pipeline | Crops the Geofabrik Australia extract to Perth with `osmium`, downloads the current Transperth GTFS, writes `data/motis/config.yml` |
+| `motis-import` | `ghcr.io/motis-project/motis` | Builds the street + timetable index in `data/motis/index` |
+| `motis` | `ghcr.io/motis-project/motis` | Serves the API (and a web UI at http://localhost:8080 for spot checks) |
+| `route` | pipeline | Computes a travel time for every grid point (see below) → `data/results/grid_travel_times.csv` |
+| `isochrones` | pipeline | Concave hulls every 5 min from 15–85 min → `data/results/poly.json` |
 
-See [prepare_gtfs](prepare_gtfs.py) for the script for this.
+Drop an existing `australia-latest.osm.pbf` into `data/input/` to skip the ~900 MB download.
 
+## How travel times are computed
+Rather than planning one journey per grid point, `route` does:
 
-## Patch R5.Py
-R5 has a [hardcoded artificial area limit](https://github.com/conveyal/r5/issues/815) that it will run on.
+1. **Transit leg** – one MOTIS `one-to-all` *arrive-by* search from the destination per
+   arrival time (08:00–09:00 every 5 min, on the next Wednesday by default). This gives, for every
+   stop, how long before the arrival time you need to leave it.
+2. **Walking leg** – one batched `one-to-many` walking query per reachable stop to the grid
+   points around it (max 15 min walk).
+3. **Combine** – each grid point takes the best stop (walk + transit), or walking directly, per
+   arrival time; the map uses the median across the window (`PERCENTILE=90 docker compose up route`
+   for a pessimistic "reliably on time" map).
 
-You will need to [remove this](https://github.com/conveyal/r5/compare/dev...SrzStephen:r5:v6.9_stephen) and 
-build a patched .jar file. For the sake of example I'm using `6.9.3` which is tested with r5py `0.1.1`. 
-
-```zsh
-git clone https://github.com/SrzStephen/r5.git
-git checkout v6.9_stephen
-brew install gradle@8
-gradle clean
-gradle shadowJar
-```
-Reference this jar in your `~/.config/r5py.yml`. Now is probably also a good time to set a memory limit
-that works for your machine.
-```yml
-max-memory: 32G
-r5-classpath: path_to/r5/build/libs/r5-v6.9-3-gbe9ede8.dirty-all.jar
-```
-# Python - Data Prep
-Install with `uv sync`, run jupyter notebook. It'll give you a `geojson` that you can then put into `src/assets`
-of the app.
+Useful options: `docker compose run --rm route route --help`
+(`--date`, `--arrive-from`, `--window`, `--spacing`, `--max-walk`, …).
