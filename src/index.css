@@ -117,5 +117,10 @@ body {
 @media (max-width: 767px) {
     .leaflet-bottom.leaflet-right {
         bottom: 300px;
+        transition: bottom 200ms ease;
+    }
+
+    main:has([data-sheet="collapsed"]) .leaflet-bottom.leaflet-right {
+        bottom: 84px;
     }
 }

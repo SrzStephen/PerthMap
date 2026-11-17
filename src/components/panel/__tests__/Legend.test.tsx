@@ -17,6 +17,6 @@ describe('Legend', () => {
 
     it('colours the first swatch with the fastest band colour', () => {
         render(<Legend minutes={40}/>)
-        expect(screen.getAllByTestId('legend-swatch')[0]).toHaveStyle({backgroundColor: 'rgb(15, 118, 110)'})
+        expect(screen.getAllByTestId('legend-swatch')[0]).toHaveStyle({backgroundColor: 'rgb(17, 94, 89)'})
     })
 })

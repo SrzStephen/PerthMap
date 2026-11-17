@@ -25,6 +25,7 @@ export function ControlCard({minutes, onMinutesChange}: ControlCardProps) {
     return (
         <section
             aria-label="Map controls"
+            data-sheet={isMobile ? (expanded ? 'expanded' : 'collapsed') : undefined}
             className={cn(
                 'glass absolute z-[1000] rounded-2xl text-[var(--text)]',
                 isMobile ? 'inset-x-4 bottom-4 p-4' : 'top-4 left-4 w-[300px] p-5',
@@ -78,7 +79,7 @@ export function ControlCard({minutes, onMinutesChange}: ControlCardProps) {
                         >
                             About
                         </a>
-                        {' · '}Data: Transperth GTFS, © OpenStreetMap, © CARTO
+                        {' · '}Data: Transperth GTFS, © OpenStreetMap, © Esri
                     </footer>
                 </>
             )}

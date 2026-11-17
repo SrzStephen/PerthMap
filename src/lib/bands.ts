@@ -27,17 +27,19 @@ export function visibleBands(bands: Band[], minutes: number): Band[] {
     return bands.filter(b => b.time <= minutes)
 }
 
-const STOPS = ['#0f766e', '#6d28d9', '#ddd6fe'].map(hex =>
+// Lightness rises monotonically so neighbouring bands stay distinguishable through the pane's alpha.
+const STOPS = ['#115e59', '#0d9488', '#a5b4fc', '#ede9fe'].map(hex =>
     [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)))
 
 function lerp(a: number[], b: number[], t: number): string {
     return '#' + a.map((v, i) => Math.round(v + (b[i] - v) * t).toString(16).padStart(2, '0')).join('')
 }
 
-/** Teal (fast) → violet → pale violet (slow). */
+/** Deep teal (fast) → teal → periwinkle → pale violet (slow). */
 export function bandColor(time: number): string {
-    const t = Math.min(Math.max((time - 10) / 75, 0), 1)
-    return t <= 0.5 ? lerp(STOPS[0], STOPS[1], t * 2) : lerp(STOPS[1], STOPS[2], (t - 0.5) * 2)
+    const t = Math.min(Math.max((time - 10) / 75, 0), 1) * (STOPS.length - 1)
+    const i = Math.min(Math.floor(t), STOPS.length - 2)
+    return lerp(STOPS[i], STOPS[i + 1], t - i)
 }
 
 export function bandLabel(time: number): string {

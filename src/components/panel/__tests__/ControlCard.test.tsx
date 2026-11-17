@@ -39,9 +39,12 @@ describe('ControlCard', () => {
         expect(screen.queryByRole('slider')).toBeNull()
         expect(screen.getByTestId('minutes-value')).toHaveTextContent('45')
 
+        expect(screen.getByRole('region', {name: 'Map controls'})).toHaveAttribute('data-sheet', 'collapsed')
+
         const expand = screen.getByRole('button', {name: 'Expand controls'})
         expect(expand).toHaveAttribute('aria-expanded', 'false')
         await userEvent.click(expand)
         expect(screen.getByRole('slider')).toBeInTheDocument()
+        expect(screen.getByRole('region', {name: 'Map controls'})).toHaveAttribute('data-sheet', 'expanded')
     })
 })

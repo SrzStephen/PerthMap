@@ -55,8 +55,18 @@ describe('visibleBands', () => {
 
 describe('bandColor', () => {
     it('matches the palette endpoints', () => {
-        expect(bandColor(10)).toBe('#0f766e')
-        expect(bandColor(85)).toBe('#ddd6fe')
+        expect(bandColor(10)).toBe('#115e59')
+        expect(bandColor(85)).toBe('#ede9fe')
+    })
+
+    it('gets steadily lighter from fastest to slowest band', () => {
+        const luminance = (hex: string) => {
+            const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+                .map(c => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+        }
+        const l = TIMES.map(t => luminance(bandColor(t)))
+        for (let i = 1; i < l.length; i++) expect(l[i]).toBeGreaterThan(l[i - 1])
     })
 
     it('gives every band a distinct colour', () => {

@@ -14,9 +14,10 @@ vi.mock('react-leaflet', () => {
     return {
         MapContainer: Div,
         Pane: Div,
-        TileLayer: () => <div data-testid="tile-layer"/>,
+        TileLayer: ({url}: { url: string }) => <div data-testid="tile-layer" data-url={url}/>,
         ZoomControl: () => null,
-        Popup: ({children}: { children?: ReactNode }) => <div data-testid="popup">{children}</div>,
+        Popup: ({children, pane}: { children?: ReactNode; pane?: string }) =>
+            <div data-testid="popup" data-pane={pane}>{children}</div>,
         Marker: () => <div data-testid="marker"/>,
         Polygon: ({children, pathOptions}: { children?: ReactNode; pathOptions: { fillColor: string } }) =>
             <div data-testid="polygon" data-fill={pathOptions.fillColor}>{children}</div>,
@@ -45,7 +46,21 @@ describe('TravelTimeMap', () => {
 
     it('fills the outermost band with the palellest colour', () => {
         render(<TravelTimeMap minutes={85}/>)
-        expect(screen.getAllByTestId('polygon')[0]).toHaveAttribute('data-fill', '#ddd6fe')
+        expect(screen.getAllByTestId('polygon')[0]).toHaveAttribute('data-fill', '#ede9fe')
+    })
+
+    it('uses keyless Esri light gray base and label tiles', () => {
+        render(<TravelTimeMap minutes={45}/>)
+        const urls = screen.getAllByTestId('tile-layer').map(t => t.dataset.url)
+        expect(urls).toEqual([
+            'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+            'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+        ])
+    })
+
+    it('opens popups in the popup pane, not inside the translucent bands pane', () => {
+        render(<TravelTimeMap minutes={45}/>)
+        for (const p of screen.getAllByTestId('popup')) expect(p).toHaveAttribute('data-pane', 'popupPane')
     })
 
     it('renders the CBD marker', () => {
