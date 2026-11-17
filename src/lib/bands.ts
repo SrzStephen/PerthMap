@@ -3,8 +3,8 @@ export const TIMES: number[] = Array.from({length: 16}, (_, i) => 10 + i * 5)
 
 export interface Band {
     time: number
-    /** Polygon rings as [lat, lng] pairs. */
-    positions: [number, number][][]
+    /** Polygons (outer ring then holes), each ring as [lat, lng] pairs. */
+    positions: [number, number][][][]
 }
 
 interface FeatureLike {
@@ -12,15 +12,19 @@ interface FeatureLike {
     geometry: { type: string; coordinates: unknown }
 }
 
-/** Polygon features → bands sorted largest time first (so smaller bands paint on top). */
+const toLatLng = (polygon: number[][][]) =>
+    polygon.map(ring => ring.map(([lng, lat]) => [lat, lng] as [number, number]))
+
+/** (Multi)Polygon features → bands sorted largest time first (so smaller bands paint on top). */
 export function parseBands(fc: { features: FeatureLike[] }): Band[] {
     return fc.features
-        .filter(f => f.geometry?.type === 'Polygon')
-        .map(f => ({
-            time: Number(f.properties.time),
-            positions: (f.geometry.coordinates as number[][][]).map(ring =>
-                ring.map(([lng, lat]) => [lat, lng] as [number, number])),
-        }))
+        .filter(f => f.geometry?.type === 'Polygon' || f.geometry?.type === 'MultiPolygon')
+        .map(f => {
+            const polygons = f.geometry.type === 'Polygon'
+                ? [f.geometry.coordinates as number[][][]]
+                : f.geometry.coordinates as number[][][][]
+            return {time: Number(f.properties.time), positions: polygons.map(toLatLng)}
+        })
         .sort((a, b) => b.time - a.time)
 }
 

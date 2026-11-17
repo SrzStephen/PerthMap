@@ -23,7 +23,7 @@ describe('parseBands', () => {
 
     it('swaps [lng, lat] to [lat, lng]', () => {
         const [band] = parseBands({features: [feature(10)]})
-        expect(band.positions[0][0]).toEqual([-31.9, 115.8])
+        expect(band.positions[0][0][0]).toEqual([-31.9, 115.8])
     })
 
     it('coerces string times to numbers', () => {
@@ -31,8 +31,17 @@ describe('parseBands', () => {
         expect(band.time).toBe(25)
     })
 
-    it('skips non-Polygon geometries', () => {
-        const bands = parseBands({features: [feature(10), feature(20, 'MultiPolygon')]})
+    it('reads MultiPolygon features as several polygons', () => {
+        const [band] = parseBands({
+            features: [{properties: {time: 10}, geometry: {type: 'MultiPolygon', coordinates: [[ring], [ring, ring]]}}],
+        })
+        expect(band.positions).toHaveLength(2)
+        expect(band.positions[1]).toHaveLength(2)
+        expect(band.positions[1][1][0]).toEqual([-31.9, 115.8])
+    })
+
+    it('skips other geometry types', () => {
+        const bands = parseBands({features: [feature(10), feature(20, 'Point')]})
         expect(bands.map(b => b.time)).toEqual([10])
     })
 })
