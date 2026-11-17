@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest'
-import {TIMES, parseBands, visibleBands, bandColor, bandLabel} from '../bands'
+import {TIMES, parseBands, bandColor, bandLabel, legendTicks} from '../bands'
 
 const ring = [[115.8, -31.9], [115.9, -31.9], [115.9, -32.0], [115.8, -31.9]]
 const feature = (time: number | string, type = 'Polygon') => ({
@@ -37,22 +37,6 @@ describe('parseBands', () => {
     })
 })
 
-describe('visibleBands', () => {
-    const bands = parseBands({features: TIMES.map(t => feature(t))})
-
-    it('shows only the 10 band at minimum', () => {
-        expect(visibleBands(bands, 10).map(b => b.time)).toEqual([10])
-    })
-
-    it('shows all bands at maximum', () => {
-        expect(visibleBands(bands, 85)).toHaveLength(16)
-    })
-
-    it('is inclusive and keeps largest-first order', () => {
-        expect(visibleBands(bands, 40).map(b => b.time)).toEqual([40, 35, 30, 25, 20, 15, 10])
-    })
-})
-
 describe('bandColor', () => {
     it('matches the palette endpoints', () => {
         expect(bandColor(10)).toBe('#115e59')
@@ -75,11 +59,19 @@ describe('bandColor', () => {
 })
 
 describe('bandLabel', () => {
-    it('labels the innermost band', () => {
-        expect(bandLabel(10)).toBe('Under 10 min')
+    it('labels the innermost band as "Under"', () => {
+        expect(bandLabel(10, 10)).toBe('Under 10 min')
+        expect(bandLabel(15, 15)).toBe('Under 15 min')
     })
 
-    it('labels a range with an en dash', () => {
-        expect(bandLabel(45)).toBe('40–45 min')
+    it('labels other bands as a range with an en dash', () => {
+        expect(bandLabel(45, 15)).toBe('40–45 min')
+    })
+})
+
+describe('legendTicks', () => {
+    it('labels the ends plus every 20 minutes between', () => {
+        expect(legendTicks(TIMES)).toEqual([10, 30, 50, 70, 85])
+        expect(legendTicks(TIMES.slice(1))).toEqual([15, 30, 50, 70, 85])
     })
 })

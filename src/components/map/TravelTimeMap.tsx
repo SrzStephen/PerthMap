@@ -1,9 +1,9 @@
 import {MapContainer, Pane, Polygon, Popup, TileLayer, ZoomControl} from 'react-leaflet'
-import poly from '../../assets/poly.json'
-import {bandColor, bandLabel, parseBands} from '../../lib/bands'
+import {bandColor, bandLabel} from '../../lib/bands'
+import {BANDS, BAND_TIMES} from '../../lib/data'
 import {CbdMarker} from './CbdMarker'
 
-const BANDS = parseBands(poly)
+const INNERMOST = BAND_TIMES[0]
 
 // Esri Light Gray Canvas: muted, keyless. Labels are a separate layer so they can sit above the bands.
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas'
@@ -33,7 +33,7 @@ export function TravelTimeMap({minutes}: { minutes: number }) {
                             fillOpacity: 1,
                         }}
                     >
-                        <Popup pane="popupPane">{bandLabel(band.time)}</Popup>
+                        <Popup pane="popupPane">{bandLabel(band.time, INNERMOST)}</Popup>
                     </Polygon>
                 ))}
             </Pane>

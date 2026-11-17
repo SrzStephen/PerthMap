@@ -2,6 +2,7 @@ import {describe, it, expect, vi, beforeEach} from 'vitest'
 import {render, screen} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {ControlCard} from '../ControlCard'
+import {TIMES} from '../../../lib/bands'
 
 const mobile = vi.hoisted(() => ({value: false}))
 vi.mock('../../../hooks/use-mobile', () => ({useIsMobile: () => mobile.value}))
@@ -12,7 +13,7 @@ describe('ControlCard', () => {
     })
 
     it('shows title, subtitle and the current value', () => {
-        render(<ControlCard minutes={45} onMinutesChange={vi.fn()}/>)
+        render(<ControlCard times={TIMES} minutes={45} onMinutesChange={vi.fn()}/>)
         expect(screen.getByText('PerthMap')).toBeInTheDocument()
         expect(screen.getByText('Public transport time to Perth CBD')).toBeInTheDocument()
         expect(screen.getByTestId('minutes-value')).toHaveTextContent('45')
@@ -20,7 +21,7 @@ describe('ControlCard', () => {
 
     it('exposes an accessible slider that steps by 5 with the keyboard', async () => {
         const onChange = vi.fn()
-        render(<ControlCard minutes={45} onMinutesChange={onChange}/>)
+        render(<ControlCard times={TIMES} minutes={45} onMinutesChange={onChange}/>)
         const slider = screen.getByRole('slider', {name: 'Maximum travel time in minutes'})
         slider.focus()
         await userEvent.keyboard('{ArrowRight}')
@@ -28,13 +29,13 @@ describe('ControlCard', () => {
     })
 
     it('has no collapse button on desktop', () => {
-        render(<ControlCard minutes={45} onMinutesChange={vi.fn()}/>)
+        render(<ControlCard times={TIMES} minutes={45} onMinutesChange={vi.fn()}/>)
         expect(screen.queryByRole('button', {name: 'Collapse controls'})).toBeNull()
     })
 
     it('collapses to a bar on mobile that still shows the value', async () => {
         mobile.value = true
-        render(<ControlCard minutes={45} onMinutesChange={vi.fn()}/>)
+        render(<ControlCard times={TIMES} minutes={45} onMinutesChange={vi.fn()}/>)
         await userEvent.click(screen.getByRole('button', {name: 'Collapse controls'}))
         expect(screen.queryByRole('slider')).toBeNull()
         expect(screen.getByTestId('minutes-value')).toHaveTextContent('45')
@@ -46,5 +47,12 @@ describe('ControlCard', () => {
         await userEvent.click(expand)
         expect(screen.getByRole('slider')).toBeInTheDocument()
         expect(screen.getByRole('region', {name: 'Map controls'})).toHaveAttribute('data-sheet', 'expanded')
+    })
+
+    it('limits the slider to the band times in the data', () => {
+        render(<ControlCard times={TIMES.slice(1)} minutes={45} onMinutesChange={vi.fn()}/>)
+        const slider = screen.getByRole('slider')
+        expect(slider).toHaveAttribute('aria-valuemin', '15')
+        expect(slider).toHaveAttribute('aria-valuemax', '85')
     })
 })

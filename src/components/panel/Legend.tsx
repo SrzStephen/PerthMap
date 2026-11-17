@@ -1,13 +1,11 @@
-import {TIMES, bandColor} from '../../lib/bands'
+import {bandColor, legendTicks} from '../../lib/bands'
 import {cn} from '../../lib/utils'
 
-const TICKS = [10, 30, 50, 70, 85]
-
-export function Legend({minutes}: { minutes: number }) {
+export function Legend({times, minutes}: { times: number[]; minutes: number }) {
     return (
         <div aria-label="Colour legend, minutes to Perth CBD">
             <div className="flex h-3 gap-px overflow-hidden rounded-full">
-                {TIMES.map(time => (
+                {times.map(time => (
                     <div
                         key={time}
                         data-testid="legend-swatch"
@@ -19,8 +17,8 @@ export function Legend({minutes}: { minutes: number }) {
                 ))}
             </div>
             <div className="relative mt-1.5 h-4 text-[11px] tabular-nums text-[var(--muted)]">
-                {TICKS.map(t => {
-                    const pct = ((TIMES.indexOf(t) + 0.5) / TIMES.length) * 100
+                {legendTicks(times).map(t => {
+                    const pct = ((times.indexOf(t) + 0.5) / times.length) * 100
                     return (
                         <span key={t} className="absolute -translate-x-1/2" style={{left: `${pct}%`}}>
                             {t}

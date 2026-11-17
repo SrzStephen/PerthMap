@@ -1,3 +1,4 @@
+/** Band times the palette is scaled over (10–85 in 5-min steps). */
 export const TIMES: number[] = Array.from({length: 16}, (_, i) => 10 + i * 5)
 
 export interface Band {
@@ -23,10 +24,6 @@ export function parseBands(fc: { features: FeatureLike[] }): Band[] {
         .sort((a, b) => b.time - a.time)
 }
 
-export function visibleBands(bands: Band[], minutes: number): Band[] {
-    return bands.filter(b => b.time <= minutes)
-}
-
 // Lightness rises monotonically so neighbouring bands stay distinguishable through the pane's alpha.
 const STOPS = ['#115e59', '#0d9488', '#a5b4fc', '#ede9fe'].map(hex =>
     [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)))
@@ -42,6 +39,13 @@ export function bandColor(time: number): string {
     return lerp(STOPS[i], STOPS[i + 1], t - i)
 }
 
-export function bandLabel(time: number): string {
-    return time <= 10 ? 'Under 10 min' : `${time - 5}–${time} min`
+/** `innermost` is the smallest band time in the data; that band covers everything under it. */
+export function bandLabel(time: number, innermost: number): string {
+    return time <= innermost ? `Under ${time} min` : `${time - 5}–${time} min`
+}
+
+/** Legend tick labels: both ends plus every 20 minutes (…30, 50, 70…) not crowding an end. */
+export function legendTicks(times: number[]): number[] {
+    const first = times[0], last = times[times.length - 1]
+    return times.filter(t => t === first || t === last || (t % 20 === 10 && t - first >= 10 && last - t >= 10))
 }

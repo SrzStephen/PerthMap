@@ -6,6 +6,8 @@ import {useIsMobile} from '../../hooks/use-mobile'
 import {cn} from '../../lib/utils'
 
 interface ControlCardProps {
+    /** Band times in the data, ascending. */
+    times: number[]
     minutes: number
     onMinutesChange: (minutes: number) => void
 }
@@ -17,7 +19,7 @@ const Value = ({minutes, size}: { minutes: number; size: 'lg' | 'sm' }) => (
     </span>
 )
 
-export function ControlCard({minutes, onMinutesChange}: ControlCardProps) {
+export function ControlCard({times, minutes, onMinutesChange}: ControlCardProps) {
     const isMobile = useIsMobile()
     const [expanded, setExpanded] = useState(true)
     const open = !isMobile || expanded
@@ -61,14 +63,14 @@ export function ControlCard({minutes, onMinutesChange}: ControlCardProps) {
                     <Slider
                         className="mt-4"
                         value={[minutes]}
-                        min={10}
-                        max={85}
+                        min={times[0]}
+                        max={times[times.length - 1]}
                         step={5}
                         onValueChange={([v]) => onMinutesChange(v)}
                         aria-label="Maximum travel time in minutes"
                     />
                     <div className="mt-5">
-                        <Legend minutes={minutes}/>
+                        <Legend times={times} minutes={minutes}/>
                     </div>
                     <footer className="mt-4 border-t pt-3 text-[11px] leading-relaxed text-[var(--muted)]">
                         <a
