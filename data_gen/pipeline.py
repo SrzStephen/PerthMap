@@ -380,6 +380,65 @@ def load_stops(gtfs_zip: Path) -> tuple[pd.DataFrame, dict[str, int]]:
     return df, {f"transperth_{sid}": i for i, sid in enumerate(df["stop_id"])}
 
 
+def _utc(ts: str) -> datetime:
+    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def _hhmm(ts: str) -> str:
+    return _utc(ts).astimezone(PERTH).strftime("%H:%M")
+
+
+def best_itinerary(resp: dict, arrive: datetime) -> dict | None:
+    """Latest-departing itinerary that still arrives by `arrive` (fewest transfers on ties).
+
+    MOTIS returns several itineraries regardless of numItineraries; leaving as late as possible matches
+    the one-to-all arrive-by duration used for the grid."""
+    ok = [it for it in resp.get("itineraries", []) if _utc(it["endTime"]) <= arrive]
+    if not ok:
+        return None
+    return max(ok, key=lambda it: (_utc(it["startTime"]), -it.get("transfers", 0)))
+
+
+class PathTable:
+    """Deduplicated encoded polylines; legs refer to them by index."""
+
+    def __init__(self) -> None:
+        self.items: list[str] = []
+        self._index: dict[str, int] = {}
+
+    def add(self, points: str) -> int:
+        if points not in self._index:
+            self._index[points] = len(self.items)
+            self.items.append(points)
+        return self._index[points]
+
+
+def trip_from_plan(it: dict, stop_ids: dict[str, int], paths: PathTable) -> dict:
+    legs = [{
+        "mode": l["mode"],
+        "line": l.get("displayName") or "",
+        "headsign": l.get("headsign") or "",
+        "from": stop_ids.get(l["from"].get("stopId") or "", -1),
+        "to": stop_ids.get(l["to"].get("stopId") or "", -1),
+        "depart": _hhmm(l["startTime"]),
+        "arrive": _hhmm(l["endTime"]),
+        "path": paths.add(l["legGeometry"]["points"]),
+    } for l in it["legs"]]
+    return {"depart": _hhmm(it["startTime"]), "arrive": _hhmm(it["endTime"]), "legs": legs}
+
+
+def build_routes(pairs, plan, stop_ids: dict[str, int], samples: list[str]) -> tuple[dict, int]:
+    """`plan(stop, sample)` -> itinerary or None, for each (global stop, sample) pair."""
+    paths, trips, missing = PathTable(), {}, 0
+    for stop, sample in pairs:
+        it = plan(stop, sample)
+        if it is None:
+            missing += 1
+            continue
+        trips[f"{stop}:{sample}"] = trip_from_plan(it, stop_ids, paths)
+    return {"samples": samples, "paths": paths.items, "trips": trips}, missing
+
+
 def make_grid(spacing: float) -> pd.DataFrame:
     lons = np.arange(GRID_BBOX.min_lon, GRID_BBOX.max_lon, spacing)
     lats = np.arange(GRID_BBOX.min_lat, GRID_BBOX.max_lat, spacing)
@@ -418,6 +477,15 @@ class Motis:
             for p in r.json()["all"]
         ]
         return pd.DataFrame(rows)
+
+    def plan(self, stop_id: str, arrive: datetime) -> dict:
+        """Raw /api/v5/plan response: arrive-by journeys from a stop to work."""
+        r = self.s.get(f"{self.url}/api/v5/plan", timeout=60, params={
+            "fromPlace": stop_id, "toPlace": f"{WORK[0]},{WORK[1]}",
+            "time": arrive.isoformat(), "arriveBy": "true", "numItineraries": 1,
+        })
+        r.raise_for_status()
+        return r.json()
 
     def walk_times(self, one: tuple[float, float], many: np.ndarray, max_s: int, max_match_m: int) -> np.ndarray:
         """Seconds to walk from each `many` point to `one` (NaN if unreachable)."""
