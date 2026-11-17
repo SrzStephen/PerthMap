@@ -241,6 +241,69 @@ def default_travel_date() -> date:
     return today + timedelta(days=(2 - today.weekday()) % 7 or 7)
 
 
+NONE, DIRECT = -1, -2  # Combined.stop / Summary.stop sentinels: unreachable, walk straight to work
+
+
+@dataclass(frozen=True)
+class Combined:
+    """Per (sample, cell): best total minutes, winning stop row (or NONE/DIRECT) and its walk minutes."""
+    total: np.ndarray
+    stop: np.ndarray
+    walk: np.ndarray
+
+
+@dataclass(frozen=True)
+class Summary:
+    """Per cell: median and fastest total over samples, plus the fastest sample's stop and walk."""
+    median: np.ndarray
+    fastest: np.ndarray
+    sample: np.ndarray
+    stop: np.ndarray
+    walk: np.ndarray
+
+
+def combine(n_cells: int, g_idx: np.ndarray, g_stop: np.ndarray, g_walk: np.ndarray,
+            stop_minutes: np.ndarray, w_idx: np.ndarray, w_min: np.ndarray) -> Combined:
+    """time(cell, t) = min(direct walk, min_stop walk(cell, stop) + transit(stop, t)), keeping the argmin."""
+    n_t = stop_minutes.shape[1]
+    total = np.full((n_t, n_cells), np.nan)
+    stop = np.full((n_t, n_cells), NONE, dtype=np.int32)
+    walk = np.full((n_t, n_cells), np.nan)
+    w_ok = ~np.isnan(w_min)
+    w_idx, w_min = np.asarray(w_idx)[w_ok], np.asarray(w_min)[w_ok]
+    for j in range(n_t):
+        t = g_walk + stop_minutes[g_stop, j]
+        ok = ~np.isnan(t)
+        ci, si, wi, ti = g_idx[ok], g_stop[ok], g_walk[ok], t[ok]
+        order = np.lexsort((ti, ci))
+        cells, first = np.unique(ci[order], return_index=True)
+        pick = order[first]
+        total[j, cells], stop[j, cells], walk[j, cells] = ti[pick], si[pick], wi[pick]
+        better = np.isnan(total[j, w_idx]) | (w_min < total[j, w_idx])
+        cells = w_idx[better]
+        total[j, cells], stop[j, cells], walk[j, cells] = w_min[better], DIRECT, w_min[better]
+    return Combined(total, stop, walk)
+
+
+def summarise(c: Combined) -> Summary:
+    n_cells = c.total.shape[1]
+    reach = ~np.all(np.isnan(c.total), axis=0)
+    median = np.full(n_cells, np.nan)
+    fastest = np.full(n_cells, np.nan)
+    sample = np.full(n_cells, -1, dtype=np.int16)
+    stop = np.full(n_cells, NONE, dtype=np.int32)
+    walk = np.full(n_cells, np.nan)
+    sub = c.total[:, reach]
+    median[reach] = np.nanmedian(sub, axis=0)
+    best = np.nanargmin(sub, axis=0)
+    cols = np.flatnonzero(reach)
+    fastest[reach] = sub[best, np.arange(len(cols))]
+    sample[reach] = best
+    stop[reach] = c.stop[best, cols]
+    walk[reach] = c.walk[best, cols]
+    return Summary(median, fastest, sample, stop, walk)
+
+
 def make_grid(spacing: float) -> pd.DataFrame:
     lons = np.arange(GRID_BBOX.min_lon, GRID_BBOX.max_lon, spacing)
     lats = np.arange(GRID_BBOX.min_lat, GRID_BBOX.max_lat, spacing)
@@ -356,14 +419,7 @@ def route(args: argparse.Namespace) -> None:
     w_min = motis.walk_times(WORK, grid[["lat", "lon"]].to_numpy()[w_idx], args.max_walk * 120, args.snap) / 60
 
     # 3. combine per arrival time, then summarise
-    per_t = np.full((len(arrivals), len(grid)), np.inf)
-    for j, col in enumerate(stop_minutes.columns):
-        total = g_walk + stop_minutes[col].to_numpy()[g_stop]
-        valid = ~np.isnan(total)
-        np.minimum.at(per_t[j], g_idx[valid], total[valid])
-        ok = ~np.isnan(w_min)
-        np.minimum.at(per_t[j], w_idx[ok], w_min[ok])
-    per_t[np.isinf(per_t)] = np.nan
+    per_t = combine(len(grid), g_idx, g_stop, g_walk, stop_minutes.to_numpy(), w_idx, w_min).total
 
     with np.errstate(all="ignore"):
         grid["travel_time"] = np.nanpercentile(per_t, args.percentile, axis=0)
