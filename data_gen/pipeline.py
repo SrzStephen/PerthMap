@@ -198,31 +198,41 @@ def masks(args: argparse.Namespace) -> None:
     log(f"{len(water):,} water polygons -> {WATER}")
 
 
+def sea_pieces(frame, coast, offset: float = 1.0) -> list:
+    """Cut `frame` with coastline lines and keep the pieces on their right (OSM: land left, sea right).
+
+    Each piece takes the majority of probe points placed `offset` right vs left of every segment."""
+    from shapely import LineString, Point, STRtree, polygonize, unary_union
+
+    # unclipped lines so they genuinely cross the frame (clipped ends sit a hair off it and dangle)
+    pieces = [p for p in polygonize([unary_union([*coast, frame.boundary])]).geoms
+              if frame.contains(p.representative_point())]
+    right, left = [], []
+    for line in coast:
+        c = np.asarray(LineString(line).coords)
+        mid, d = (c[:-1] + c[1:]) / 2, c[1:] - c[:-1]
+        n = offset * np.column_stack([d[:, 1], -d[:, 0]]) / np.maximum(np.hypot(*d.T), 1e-9)[:, None]
+        right.extend(Point(p) for p in mid + n)
+        left.extend(Point(p) for p in mid - n)
+    tree = STRtree(pieces)
+
+    def votes(pts):
+        return np.bincount(tree.query(pts, predicate="within")[1], minlength=len(pieces))
+
+    keep = votes(right) > votes(left)
+    return [p for p, k in zip(pieces, keep) if k]
+
+
 def ocean_polygons(src: Path):
-    """Sea inside the padded grid bbox: cut the bbox with the coastline, keep pieces right of it (OSM: land left)."""
+    """Sea inside the padded grid bbox, from the OSM coastline."""
     import geopandas as gpd
-    from shapely import LineString, Point, box, polygonize, unary_union
+    from shapely import box
 
     coast = osm_layer(src, ["w/natural=coastline"], "linestring", "coast").to_crs(METRIC_CRS)
     pb = GRID_BBOX.padded(0.02)
     frame = gpd.GeoSeries([box(pb.min_lon, pb.min_lat, pb.max_lon, pb.max_lat)], crs="EPSG:4326").to_crs(METRIC_CRS)[0]
-    # unclipped lines so they genuinely cross the frame (clipped ends sit a hair off it and dangle)
-    pieces = list(polygonize([unary_union([*coast.geometry.values, frame.boundary])]).geoms)
-    pieces = [p for p in pieces if frame.contains(p.representative_point())]
-    # probe points 1 m right (sea) and left (land) of every coastline segment; each piece takes the majority
-    right, left = [], []
-    for line in coast.geometry:
-        c = np.asarray(LineString(line).coords)
-        mid, d = (c[:-1] + c[1:]) / 2, c[1:] - c[:-1]
-        n = np.column_stack([d[:, 1], -d[:, 0]]) / np.maximum(np.hypot(*d.T), 1e-9)[:, None]
-        right.extend(Point(p) for p in mid + n)
-        left.extend(Point(p) for p in mid - n)
-    sea = gpd.GeoDataFrame(geometry=pieces, crs=METRIC_CRS)
-
-    def votes(pts):
-        return np.bincount(sea.sindex.query(gpd.GeoSeries(pts).values, predicate="within")[1], minlength=len(sea))
-
-    return sea[votes(right) > votes(left)].to_crs("EPSG:4326")[["geometry"]]
+    sea = sea_pieces(frame, list(coast.geometry.values))
+    return gpd.GeoDataFrame(geometry=sea, crs=METRIC_CRS).to_crs("EPSG:4326")[["geometry"]]
 
 
 def walkable(grid: pd.DataFrame, max_m: float) -> np.ndarray:
