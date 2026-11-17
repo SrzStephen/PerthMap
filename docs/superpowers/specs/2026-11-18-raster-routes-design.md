@@ -131,8 +131,8 @@ Leave 07:22 → arrive 08:00 (Weekday)
 ```
 
 "Leave" = first transit departure − walk minutes. Direct-walk cells show "Walk N min". Missing trip → both times
-plus "Route details unavailable". Changing day/hour re-resolves the same point. ✕, Esc, or clicking an unreachable
-cell closes; a new click replaces.
+plus "Route details unavailable". Changing day/hour re-resolves the same point. ✕ or Esc closes; a new click
+replaces the result (an unreachable or outside cell shows its message).
 
 ## 5. Error handling and testing
 
