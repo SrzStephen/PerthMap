@@ -1,0 +1,5 @@
+*
+!Dockerfile
+!pipeline.py
+!data/pyproject.toml
+!data/uv.lock
