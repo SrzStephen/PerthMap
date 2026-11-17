@@ -22,10 +22,13 @@ How `route` works (two cheap passes instead of ~200k individual journey plans):
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
+import struct
 import subprocess
 import sys
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -302,6 +305,79 @@ def summarise(c: Combined) -> Summary:
     stop[reach] = c.stop[best, cols]
     walk[reach] = c.walk[best, cols]
     return Summary(median, fastest, sample, stop, walk)
+
+
+@dataclass(frozen=True)
+class GridMeta:
+    width: int
+    height: int
+    min_lon: float
+    min_lat: float
+    spacing: float
+
+
+def grid_meta(spacing: float) -> GridMeta:
+    """Shape of the `make_grid` lattice (row 0 = south)."""
+    return GridMeta(len(np.arange(GRID_BBOX.min_lon, GRID_BBOX.max_lon, spacing)),
+                    len(np.arange(GRID_BBOX.min_lat, GRID_BBOX.max_lat, spacing)),
+                    GRID_BBOX.min_lon, GRID_BBOX.min_lat, spacing)
+
+
+def cell_of(meta: GridMeta, lat, lon):
+    """Flat cell index (iy * width + ix) for coordinates on the lattice."""
+    ix = np.rint((np.asarray(lon) - meta.min_lon) / meta.spacing).astype(np.int64)
+    iy = np.rint((np.asarray(lat) - meta.min_lat) / meta.spacing).astype(np.int64)
+    return iy * meta.width + ix
+
+
+GRID_MAGIC, GRID_VERSION = b"PMG1", 1
+U8_NA, STOP_NONE, STOP_DIRECT = 255, 0xFFFF, 0xFFFE
+
+
+def _u8(values: np.ndarray) -> np.ndarray:
+    out = np.full(values.shape, U8_NA, dtype=np.uint8)
+    ok = ~np.isnan(values)
+    out[ok] = np.clip(np.floor(values[ok] + 0.5), 0, 254)
+    return out
+
+
+def encode_grid(s: Summary, cells: np.ndarray, meta: GridMeta, stop_index: np.ndarray) -> bytes:
+    """Gzipped header + planes (median, fastest, sample, walk: u8; stop: u16 LE) over the full lattice."""
+    n = meta.width * meta.height
+    planes = {k: np.full(n, U8_NA, dtype=np.uint8) for k in ("median", "fastest", "sample", "walk")}
+    planes["median"][cells] = _u8(s.median.astype(float))
+    planes["fastest"][cells] = _u8(s.fastest.astype(float))
+    planes["walk"][cells] = _u8(s.walk.astype(float))
+    sample = s.sample.astype(np.int64)
+    planes["sample"][cells] = np.where(sample >= 0, sample, U8_NA).astype(np.uint8)
+    stop = np.full(n, STOP_NONE, dtype="<u2")
+    rows = s.stop.astype(np.int64)
+    stop[cells] = np.where(rows >= 0, stop_index[np.clip(rows, 0, None)],
+                           np.where(rows == DIRECT, STOP_DIRECT, STOP_NONE))
+    header = struct.pack("<4sHII", GRID_MAGIC, GRID_VERSION, meta.width, meta.height)
+    body = b"".join(planes[k].tobytes() for k in ("median", "fastest", "sample", "walk")) + stop.tobytes()
+    return gzip.compress(header + body, 9)
+
+
+def decode_grid(b: bytes) -> dict[str, np.ndarray]:
+    raw = gzip.decompress(b)
+    magic, version, w, h = struct.unpack("<4sHII", raw[:14])
+    assert magic == GRID_MAGIC and version == GRID_VERSION
+    n, o = w * h, 14
+    out = {}
+    for k in ("median", "fastest", "sample", "walk"):
+        out[k] = np.frombuffer(raw, np.uint8, n, o)
+        o += n
+    out["stop"] = np.frombuffer(raw, "<u2", n, o)
+    return out
+
+
+def load_stops(gtfs_zip: Path) -> tuple[pd.DataFrame, dict[str, int]]:
+    """GTFS stops sorted by stop_id (string); MOTIS id `transperth_<stop_id>` -> row index."""
+    with zipfile.ZipFile(gtfs_zip) as z, z.open("stops.txt") as f:
+        df = pd.read_csv(f, dtype={"stop_id": str}, usecols=["stop_id", "stop_name", "stop_lat", "stop_lon"])
+    df = df.sort_values("stop_id", kind="stable").reset_index(drop=True)
+    return df, {f"transperth_{sid}": i for i, sid in enumerate(df["stop_id"])}
 
 
 def make_grid(spacing: float) -> pd.DataFrame:
