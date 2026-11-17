@@ -89,3 +89,33 @@ body {
     font-weight: 600;
     color: var(--text);
 }
+
+.cbd-marker {
+    background: none;
+    border: none;
+}
+
+.cbd-marker svg {
+    filter: drop-shadow(0 2px 3px rgb(15 23 42 / 0.3));
+}
+
+.cbd-label {
+    position: absolute;
+    left: 32px;
+    top: 6px;
+    white-space: nowrap;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #fff;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgb(15 23 42 / 0.15);
+}
+
+/* Keep zoom + attribution clear of the mobile bottom sheet. */
+@media (max-width: 767px) {
+    .leaflet-bottom.leaflet-right {
+        bottom: 300px;
+    }
+}
