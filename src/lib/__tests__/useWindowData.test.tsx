@@ -34,6 +34,7 @@ describe('useWindowData', () => {
         expect(result.current.status).toBe('loading')
         await waitFor(() => expect(result.current.status).toBe('ready'))
         expect(keyOf(result.current.bands)).toBe('weekday-08')
+        expect(result.current.loadedKey).toBe('weekday-08')
         expect(d.loadGrid).toHaveBeenCalledWith(INDEX, 'weekday-08')
     })
 
@@ -45,6 +46,7 @@ describe('useWindowData', () => {
         rerender({h: 9})
         expect(result.current.status).toBe('loading')
         expect(keyOf(result.current.bands)).toBe('weekday-08')
+        expect(result.current.loadedKey).toBe('weekday-08')
         await act(async () => next.resolve(fakeGrid('weekday-09')))
         await waitFor(() => expect(keyOf(result.current.bands)).toBe('weekday-09'))
     })

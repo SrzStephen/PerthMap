@@ -34,11 +34,33 @@ export const fmtTime = (min: number) => {
 /** When to leave the clicked point: first departure minus the walk to the stop. */
 export const leaveTime = (firstDepart: number, walkMin: number) => fmtTime(firstDepart - walkMin)
 
+/** Cells only exist near walkable ways; a click in a park or on a verge uses the nearest reachable cell. */
+const SNAP_CELLS = 2
+
+function nearestReachable(grid: Grid, i: number): number | null {
+    if (grid.fastest[i] !== UNREACHABLE) return i
+    const {width, height} = grid.meta
+    const x0 = i % width, y0 = Math.floor(i / width)
+    let best: number | null = null, bestD = Infinity
+    for (let dy = -SNAP_CELLS; dy <= SNAP_CELLS; dy++) {
+        for (let dx = -SNAP_CELLS; dx <= SNAP_CELLS; dx++) {
+            const x = x0 + dx, y = y0 + dy, d = dx * dx + dy * dy
+            if (x < 0 || y < 0 || x >= width || y >= height || d >= bestD) continue
+            if (grid.fastest[y * width + x] !== UNREACHABLE) {
+                best = y * width + x
+                bestD = d
+            }
+        }
+    }
+    return best
+}
+
 export function resolveRoute(grid: Grid, lat: number, lng: number, routes: Routes): RouteResult {
-    const i = cellAt(grid.meta, lat, lng)
-    if (i === null) return {kind: 'outside'}
+    const clickedCell = cellAt(grid.meta, lat, lng)
+    if (clickedCell === null) return {kind: 'outside'}
+    const i = nearestReachable(grid, clickedCell)
+    if (i === null) return {kind: 'unreachable'}
     const best = grid.fastest[i]
-    if (best === UNREACHABLE) return {kind: 'unreachable'}
     const typical = grid.median[i] === UNREACHABLE ? best : grid.median[i]
     const stop = grid.stop[i]
     if (stop === DIRECT_WALK) return {kind: 'walk', best, typical}
@@ -51,6 +73,16 @@ export function resolveRoute(grid: Grid, lat: number, lng: number, routes: Route
 const MODE_NAMES: Record<string, string> = {BUS: 'Bus', FERRY: 'Ferry', RAIL: 'Train', REGIONAL_RAIL: 'Train', SUBWAY: 'Train', TRAM: 'Tram'}
 
 export const isWalk = (leg: Leg, routes: Routes) => routes.lines[leg[0]][0] === 'WALK'
+
+/** Route overlay colours: distinct from the teal/violet bands underneath. */
+export const MODE_COLORS = {TRAIN: '#2563eb', BUS: '#ea580c', FERRY: '#9333ea', WALK: '#475569'} as const
+
+export function modeColor(mode: string): string {
+    if (mode === 'WALK') return MODE_COLORS.WALK
+    if (mode === 'FERRY') return MODE_COLORS.FERRY
+    if (['RAIL', 'REGIONAL_RAIL', 'SUBWAY', 'METRO', 'TRAM', 'HIGHSPEED_RAIL', 'LONG_DISTANCE'].includes(mode)) return MODE_COLORS.TRAIN
+    return MODE_COLORS.BUS
+}
 
 export function legLabel(leg: Leg, routes: Routes, stops: Stops | null, isLast: boolean): string {
     const [mode, line, headsign] = routes.lines[leg[0]]

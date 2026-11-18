@@ -54,6 +54,7 @@ export function useWindowData(index: DataIndex | null, day: DayKey, hour: number
     const [grid, setGrid] = useState<Grid | null>(null)
     const [bands, setBands] = useState<Band[]>([])
     const [status, setStatus] = useState<WindowStatus>('loading')
+    const [loadedKey, setLoadedKey] = useState<string | null>(null)
     const [attempt, setAttempt] = useState(0)
     const latest = useRef(0)
     const depsRef = useRef(deps)
@@ -71,6 +72,7 @@ export function useWindowData(index: DataIndex | null, day: DayKey, hour: number
                 if (request !== latest.current) return
                 setGrid(g)
                 setBands(b)
+                setLoadedKey(key)
                 setStatus('ready')
                 for (const h of [hour - 1, hour + 1]) {
                     if (index.hours.includes(h)) d.loadGrid(index, windowKey(day, h)).catch(() => undefined)
@@ -88,5 +90,6 @@ export function useWindowData(index: DataIndex | null, day: DayKey, hour: number
         setAttempt(a => a + 1)
     }, [key])
 
-    return {grid, bands, status, retry}
+    /** loadedKey: window the current grid/bands belong to (lags `day`/`hour` while loading). */
+    return {grid, bands, status, retry, loadedKey}
 }

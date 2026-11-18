@@ -37,8 +37,9 @@ describe('resolveRoute', () => {
         expect(resolveRoute(G, -31, 115, ROUTES)).toEqual({kind: 'outside'})
     })
 
-    it('unreachable cell', () => {
-        expect(resolveRoute(G, -32, 115.02, ROUTES)).toEqual({kind: 'unreachable'})
+    it('unreachable cell with nothing reachable nearby', () => {
+        const none = {median: UNREACHABLE, fastest: UNREACHABLE, sample: 255, walk: 255, stop: NO_STOP}
+        expect(resolveRoute(grid([none, none, none]), -32, 115.02, ROUTES)).toEqual({kind: 'unreachable'})
     })
 
     it('direct walk', () => {
@@ -54,6 +55,21 @@ describe('resolveRoute', () => {
         const r = resolveRoute(G, -32, 115, ROUTES)
         expect(r).toMatchObject({kind: 'transit', best: 38, typical: 46, walk: 6, leave: '07:22', arrive: '08:00', boardStop: 12})
         expect(r.kind === 'transit' && r.trip).toBe(ROUTES.trips['12:3'])
+    })
+
+    it('snaps an unwalkable cell to the nearest reachable cell within 2 cells', () => {
+        const meta: GridMeta = {width: 5, height: 1, minLon: 115, minLat: -32, spacing: 0.01}
+        const empty = {median: UNREACHABLE, fastest: UNREACHABLE, sample: 255, walk: 255, stop: NO_STOP}
+        const walk = {median: 20, fastest: 18, sample: 0, walk: 18, stop: DIRECT_WALK}
+        const cells = [walk, empty, empty, empty, empty]
+        const g: Grid = {
+            meta,
+            median: Uint8Array.from(cells.map(c => c.median)), fastest: Uint8Array.from(cells.map(c => c.fastest)),
+            sample: Uint8Array.from(cells.map(c => c.sample)), walk: Uint8Array.from(cells.map(c => c.walk)),
+            stop: Uint16Array.from(cells.map(c => c.stop)),
+        }
+        expect(resolveRoute(g, -32, 115.02, ROUTES)).toEqual({kind: 'walk', best: 18, typical: 20})
+        expect(resolveRoute(g, -32, 115.03, ROUTES)).toEqual({kind: 'unreachable'})
     })
 
     it('typical falls back to best when the median is missing', () => {
