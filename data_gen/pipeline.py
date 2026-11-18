@@ -888,6 +888,16 @@ def main() -> None:
     sp.add_argument("--workers", type=int, default=os.cpu_count() or 8)
     sp.set_defaults(fn=route)
 
+    sp = sub.add_parser("bike", help="ride times and paths to work by bike (needs `route` output and MOTIS)")
+    sp.add_argument("--motis-url", default=os.environ.get("MOTIS_URL", "http://motis:8080"))
+    sp.add_argument("--spacing", type=float, default=env_float("GRID_SPACING", 0.001), help="grid spacing, degrees")
+    sp.add_argument("--snap", type=int, default=100, help="max distance to snap a grid point to a path, m")
+    sp.add_argument("--walkable-within", type=int, default=75,
+                    help="drop grid points further than this from a walkable way, m")
+    sp.add_argument("--bike-block", type=int, default=5, help="one real ride path per block of N x N cells")
+    sp.add_argument("--workers", type=int, default=os.cpu_count() or 8)
+    sp.set_defaults(fn=lambda a: __import__("bike").bike(a))  # lazy: bike imports this module
+
     args = p.parse_args()
     args.fn(args)
 

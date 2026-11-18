@@ -148,3 +148,134 @@ class SegmentTable:
             shapes.append(encode_polyline([tuple(p) for p in pts], 5))
         elev = [None if h is None else [int(h[0]), *np.diff(h).astype(int).tolist()] for h in self._heights]
         return {"shapes": shapes, "lengths": [round(x) for x in self._lengths], "elev": elev}
+
+
+# ------------------------------------------------------------------------------ stage
+ONE_TO_MANY_CHUNK = 100_000  # MOTIS limits.onetomany_max_many
+
+
+def ref_speed_kmh(legs: list[dict]) -> float:
+    """MOTIS's bike speed, measured from plans (its bike time is distance at a constant speed)."""
+    return round(float(np.median([l["distance"] / l["duration"] * 3.6 for l in legs if l["duration"] > 0])), 2)
+
+
+def bike_mismatch(rep_grid_s: np.ndarray, plan_s: np.ndarray, tolerance: float = 120) -> float | None:
+    """Share of representatives whose plan duration is more than `tolerance` s off their grid time."""
+    ok = np.isfinite(rep_grid_s) & np.isfinite(plan_s)
+    if not ok.any():
+        return None
+    return float(np.mean(np.abs(rep_grid_s[ok] - plan_s[ok]) > tolerance))
+
+
+def water_test(path):
+    """is_wet(lat, lon) -> bool array from the water polygons; always False if the mask is missing."""
+    if not path.exists():
+        log(f"warning: {path} missing - bridges keep SRTM's water heights")
+        return lambda lat, lon: np.zeros(np.shape(lat), bool)
+    import geopandas as gpd
+    import shapely
+
+    import pipeline as pl
+
+    b = pl.GRID_BBOX.padded(0.05)
+    geom = shapely.union_all(gpd.read_parquet(path).geometry.clip_by_rect(b.min_lon, b.min_lat, b.max_lon,
+                                                                           b.max_lat).values)
+    shapely.prepare(geom)
+    return lambda lat, lon: shapely.contains_xy(geom, np.asarray(lon), np.asarray(lat))
+
+
+def log(msg: str) -> None:
+    import pipeline as pl
+
+    pl.log(msg)
+
+
+def bike(args) -> None:
+    import json
+    import sys
+    from concurrent.futures import ThreadPoolExecutor
+
+    import requests
+    from tqdm import tqdm
+
+    import pipeline as pl
+
+    index_path = pl.WEB / "index.json"
+    if not index_path.exists():
+        sys.exit(f"{index_path} missing - run the `route` stage first")
+    if not pl.WALKWAYS.exists():
+        sys.exit(f"{pl.WALKWAYS} missing - run the `masks` stage first")
+    motis = pl.Motis(args.motis_url)
+
+    # 1. ride time from every walkable cell
+    grid = pl.make_grid(args.spacing)
+    meta = pl.grid_meta(args.spacing)
+    grid = grid[pl.walkable(grid, args.walkable_within)].reset_index(drop=True)
+    pts = grid[["lat", "lon"]].to_numpy()
+    cells = pl.cell_of(meta, pts[:, 0], pts[:, 1])
+    chunks = [pts[i:i + ONE_TO_MANY_CHUNK] for i in range(0, len(pts), ONE_TO_MANY_CHUNK)]
+    log(f"bike times for {len(pts):,} grid points")
+    with ThreadPoolExecutor(args.workers) as ex:
+        seconds = np.concatenate(list(ex.map(
+            lambda c: motis.bike_times(pl.WORK, c, pl.BIKE_MAX_S, args.snap), chunks))) if chunks else np.empty(0)
+    reachable = np.isfinite(seconds)
+    if not reachable.any():
+        sys.exit("no grid point can reach work by bike - is MOTIS up, with street routing?")
+
+    # 2./3. one real path per block
+    rep_cells, block_of = representatives(cells, reachable, meta, args.bike_block)
+    row_of_cell = dict(zip(cells.tolist(), range(len(cells))))
+    rep_rows = np.array([row_of_cell[c] for c in rep_cells.tolist()], dtype=np.int64)
+
+    def plan(row):
+        try:
+            return motis.bike_plan((pts[row, 0], pts[row, 1]), pl.BIKE_MAX_S)
+        except requests.RequestException as e:
+            log(f"warning: bike plan from {pts[row].tolist()} failed: {e}")
+            return None
+
+    log(f"{reachable.sum():,} reachable points; planning {len(rep_rows):,} block paths")
+    with ThreadPoolExecutor(args.workers) as ex:
+        plans = list(tqdm(ex.map(plan, rep_rows.tolist()), total=len(rep_rows), mininterval=10))
+    legs = [p for p in plans if p]
+    if not legs:
+        sys.exit("no bike path could be planned")
+    ref = ref_speed_kmh(legs)
+
+    # 4./5. shared segments with heights
+    tiles = [pl.SRTM_DIR / f"{t}.hgt" for t in pl.SRTM_TILES]
+    dem = None
+    if all(t.exists() for t in tiles):
+        dem = Dem.from_tiles(tiles, pl.GRID_BBOX.padded(0.05))
+    else:
+        log(f"warning: SRTM tiles missing in {pl.SRTM_DIR} - no elevation profiles (run `prepare`)")
+    table = SegmentTable(dem, water_test(pl.WATER))
+    paths, path_of_rep = [], np.full(len(rep_rows), -1, dtype=np.int64)
+    for i, leg in enumerate(plans):
+        if leg:
+            path_of_rep[i] = len(paths)
+            paths.append(table.add_path(int(rep_cells[i]), leg))
+    path = np.where(block_of >= 0, path_of_rep[np.maximum(block_of, 0)], -1)
+
+    pl.WEB.mkdir(parents=True, exist_ok=True)
+    (pl.WEB / "bike.grid.bin").write_bytes(encode_bike_grid(seconds, path, cells, meta))
+    pl.write_json(pl.WEB / "bike.routes.json", {"refSpeedKmh": ref, **table.finalize(), "paths": paths})
+
+    # 6. consistency
+    plan_s = np.array([p["duration"] if p else np.nan for p in plans], dtype=float)
+    rate = bike_mismatch(seconds[rep_rows], plan_s)
+    missing = float(np.mean([p is None for p in plans]))
+    no_elev = sum(p[2] is None for p in paths)
+    flags = []
+    if rate is None or rate > 0.05:
+        flags.append("> 5% mismatch" if rate is not None else "no plan could be compared")
+    if missing > 0.05:
+        flags.append(f"{missing:.0%} of plans missing")
+    index = json.loads(index_path.read_text())
+    index["bike"] = {"refSpeedKmh": ref, "mismatchRate": None if rate is None else round(rate, 4),
+                     "missingRate": round(missing, 4)}
+    pl.write_json(index_path, index)
+    flag = f"  WARNING: {'; '.join(flags)}" if flags else ""
+    shown = "n/a" if rate is None else f"{rate:.1%}"
+    log(f"bike: {reachable.sum():,} cells, {len(paths):,} paths ({no_elev} without elevation), "
+        f"ref {ref} km/h, mismatch {shown}{flag}")
