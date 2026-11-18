@@ -20,10 +20,13 @@ const FAR = 1e4
  * d3-contour encloses `value >= level`, so the negated plane is contoured at -(t - 0.5):
  * minutes are integers, so that is exactly `median < t`.
  */
-export function buildBands(grid: Grid, thresholds: number[], water: LngLatMultiPolygon | null): Band[] {
+export function buildBands(grid: Grid, thresholds: number[], water: LngLatMultiPolygon | null,
+                           mask: Uint8Array | null = null): Band[] {
     const {width, height, minLon, minLat, spacing} = grid.meta
     const values = new Float64Array(width * height)
-    for (let i = 0; i < values.length; i++) values[i] = grid.median[i] === UNREACHABLE ? -FAR : -grid.median[i]
+    for (let i = 0; i < values.length; i++) {
+        values[i] = grid.median[i] === UNREACHABLE || (mask && !mask[i]) ? -FAR : -grid.median[i]
+    }
     const gen = contours().size([width, height])
     // d3-contour puts cell i's centre at i + 0.5
     const toLngLat = ([x, y]: number[]) => [minLon + (x - 0.5) * spacing, minLat + (y - 0.5) * spacing]

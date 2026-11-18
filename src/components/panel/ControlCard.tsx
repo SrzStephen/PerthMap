@@ -23,6 +23,8 @@ interface ControlCardProps {
     onRetry: () => void
     /** Route panel; replaces the minutes slider and legend while present. */
     children?: ReactNode
+    /** Filters (school picker), shown under the day and hour. */
+    filters?: ReactNode
 }
 
 const pad = (h: number) => String(h).padStart(2, '0')
@@ -36,7 +38,7 @@ const Value = ({minutes, size}: { minutes: number; size: 'lg' | 'sm' }) => (
 )
 
 export function ControlCard(props: ControlCardProps) {
-    const {times, minutes, onMinutesChange, days, day, onDayChange, hours, hour, onHourChange, status, onRetry, children} = props
+    const {times, minutes, onMinutesChange, days, day, onDayChange, hours, hour, onHourChange, status, onRetry, children, filters} = props
     const isMobile = useIsMobile()
     const [expanded, setExpanded] = useState(true)
     const open = !isMobile || expanded
@@ -99,6 +101,7 @@ export function ControlCard(props: ControlCardProps) {
                                 <button type="button" onClick={onRetry} className="font-semibold underline">Retry</button>
                             </p>
                         )}
+                        {filters}
                     </div>
 
                     {children ?? (

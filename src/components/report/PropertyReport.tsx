@@ -21,5 +21,3 @@ export function PropertyReport({title, route, schools, asOf, onClose}: PropertyR
         </div>
     )
 }
-
-export const pointTitle = ([lat, lng]: [number, number]) => `${lat.toFixed(5)}, ${lng.toFixed(5)}`

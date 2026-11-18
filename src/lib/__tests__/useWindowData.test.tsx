@@ -30,7 +30,7 @@ function deps(overrides: Partial<WindowDeps> = {}): WindowDeps {
 describe('useWindowData', () => {
     it('loads then ready', async () => {
         const d = deps()
-        const {result} = renderHook(() => useWindowData(INDEX, 'weekday', 8, d))
+        const {result} = renderHook(() => useWindowData(INDEX, 'weekday', 8, null, d))
         expect(result.current.status).toBe('loading')
         await waitFor(() => expect(result.current.status).toBe('ready'))
         expect(keyOf(result.current.bands)).toBe('weekday-08')
@@ -41,7 +41,7 @@ describe('useWindowData', () => {
     it('keeps previous bands while loading', async () => {
         const next = deferred<Grid>()
         const d = deps({loadGrid: vi.fn(async (_i: DataIndex, key: string) => key === 'weekday-09' ? next.promise : fakeGrid(key))})
-        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, d), {initialProps: {h: 8}})
+        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, null, d), {initialProps: {h: 8}})
         await waitFor(() => expect(result.current.status).toBe('ready'))
         rerender({h: 9})
         expect(result.current.status).toBe('loading')
@@ -54,7 +54,7 @@ describe('useWindowData', () => {
     it('stale window load is ignored', async () => {
         const slow = deferred<Grid>(), fast = deferred<Grid>()
         const d = deps({loadGrid: vi.fn((_i: DataIndex, key: string) => key === 'weekday-08' ? slow.promise : fast.promise)})
-        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, d), {initialProps: {h: 8}})
+        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, null, d), {initialProps: {h: 8}})
         rerender({h: 9})
         await act(async () => fast.resolve(fakeGrid('weekday-09')))
         await waitFor(() => expect(result.current.status).toBe('ready'))
@@ -66,7 +66,7 @@ describe('useWindowData', () => {
     it('does not contour a window superseded before its grid arrived', async () => {
         const slow = deferred<Grid>()
         const d = deps({loadGrid: vi.fn(async (_i: DataIndex, key: string) => key === 'weekday-08' ? slow.promise : fakeGrid(key))})
-        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, d), {initialProps: {h: 8}})
+        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, null, d), {initialProps: {h: 8}})
         rerender({h: 9})
         await waitFor(() => expect(result.current.status).toBe('ready'))
         await act(async () => slow.resolve(fakeGrid('weekday-08')))
@@ -74,9 +74,24 @@ describe('useWindowData', () => {
         expect(contoured).toEqual(['weekday-09'])
     })
 
+    it('recontours with the mask and caches per mask', async () => {
+        const d = deps()
+        const mask = new Uint8Array([1])
+        const {result, rerender} = renderHook(({m}) => useWindowData(INDEX, 'weekday', 8, m, d),
+            {initialProps: {m: null as Uint8Array | null}})
+        await waitFor(() => expect(result.current.status).toBe('ready'))
+        rerender({m: mask})
+        await waitFor(() => expect(d.computeBands).toHaveBeenCalledTimes(2))
+        expect((d.computeBands as ReturnType<typeof vi.fn>).mock.calls[1][1]).toBe(mask)
+        rerender({m: null})
+        rerender({m: mask})
+        await waitFor(() => expect(result.current.status).toBe('ready'))
+        expect(d.computeBands).toHaveBeenCalledTimes(2) // both masks already contoured
+    })
+
     it('reuses bands for a window already contoured', async () => {
         const d = deps()
-        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, d), {initialProps: {h: 8}})
+        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, null, d), {initialProps: {h: 8}})
         await waitFor(() => expect(result.current.loadedKey).toBe('weekday-08'))
         rerender({h: 9})
         await waitFor(() => expect(result.current.loadedKey).toBe('weekday-09'))
@@ -92,7 +107,7 @@ describe('useWindowData', () => {
             if (fail) throw new Error('boom')
             return fakeGrid(key)
         })})
-        const {result} = renderHook(() => useWindowData(INDEX, 'weekday', 8, d))
+        const {result} = renderHook(() => useWindowData(INDEX, 'weekday', 8, null, d))
         await waitFor(() => expect(result.current.status).toBe('error'))
         fail = false
         act(() => result.current.retry())
@@ -102,7 +117,7 @@ describe('useWindowData', () => {
 
     it('prefetches neighbours', async () => {
         const d = deps()
-        const {result} = renderHook(() => useWindowData(INDEX, 'weekday', 8, d))
+        const {result} = renderHook(() => useWindowData(INDEX, 'weekday', 8, null, d))
         await waitFor(() => expect(result.current.status).toBe('ready'))
         await waitFor(() => {
             const keys = (d.loadGrid as ReturnType<typeof vi.fn>).mock.calls.map(c => c[1])
@@ -112,7 +127,7 @@ describe('useWindowData', () => {
 
     it('waits for the index', () => {
         const d = deps()
-        const {result} = renderHook(() => useWindowData(null, 'weekday', 8, d))
+        const {result} = renderHook(() => useWindowData(null, 'weekday', 8, null, d))
         expect(result.current.status).toBe('loading')
         expect(d.loadGrid).not.toHaveBeenCalled()
     })

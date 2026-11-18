@@ -8,7 +8,7 @@ export type WindowStatus = 'loading' | 'ready' | 'error'
 export interface WindowDeps {
     loadGrid: (index: DataIndex, key: string) => Promise<Grid>
     evictGrid: (key: string) => void
-    computeBands: (grid: Grid) => Promise<Band[]>
+    computeBands: (grid: Grid, mask: Uint8Array | null) => Promise<Band[]>
 }
 
 let worker: Worker | null | undefined
@@ -16,7 +16,7 @@ let nextId = 0
 const pending = new Map<number, { resolve: (b: Band[]) => void; reject: (e: Error) => void }>()
 
 /** Bands from a Web Worker; falls back to the main thread if workers are unavailable or fail. */
-export function computeBandsInWorker(grid: Grid): Promise<Band[]> {
+export function computeBandsInWorker(grid: Grid, mask: Uint8Array | null = null): Promise<Band[]> {
     if (worker === undefined) {
         try {
             worker = typeof Worker === 'undefined' ? null
@@ -39,18 +39,29 @@ export function computeBandsInWorker(grid: Grid): Promise<Band[]> {
         }
     }
     const w = worker
-    if (!w) return Promise.resolve(buildBands(grid, THRESHOLDS, null))
+    if (!w) return Promise.resolve(buildBands(grid, THRESHOLDS, null, mask))
     const id = nextId++
     return new Promise<Band[]>((resolve, reject) => {
         pending.set(id, {resolve, reject})
-        w.postMessage({id, grid, thresholds: THRESHOLDS, water: null})
-    }).catch(() => buildBands(grid, THRESHOLDS, null))
+        w.postMessage({id, grid, thresholds: THRESHOLDS, water: null, mask})
+    }).catch(() => buildBands(grid, THRESHOLDS, null, mask))
 }
 
 const DEFAULT_DEPS: WindowDeps = {loadGrid, evictGrid, computeBands: computeBandsInWorker}
 
-/** Grid + bands for one window. Previous grid/bands stay while the next loads or after an error. */
-export function useWindowData(index: DataIndex | null, day: DayKey, hour: number, deps: WindowDeps = DEFAULT_DEPS) {
+/** Previous grid/bands stay while the next loads or after an error. */
+const maskIds = new WeakMap<Uint8Array, number>()
+let nextMaskId = 1
+const maskId = (mask: Uint8Array | null) => {
+    if (!mask) return 0
+    let id = maskIds.get(mask)
+    if (!id) maskIds.set(mask, (id = nextMaskId++))
+    return id
+}
+
+/** Grid + bands for one window. `mask` (1 = keep) limits the bands, e.g. to chosen intake areas. */
+export function useWindowData(index: DataIndex | null, day: DayKey, hour: number, mask: Uint8Array | null = null,
+                              deps: WindowDeps = DEFAULT_DEPS) {
     const [grid, setGrid] = useState<Grid | null>(null)
     const [bands, setBands] = useState<Band[]>([])
     const [status, setStatus] = useState<WindowStatus>('loading')
@@ -71,10 +82,11 @@ export function useWindowData(index: DataIndex | null, day: DayKey, hour: number
             .then(async g => {
                 // scrubbing: don't queue contour jobs (~0.5 s each) for windows already superseded
                 if (request !== latest.current) return
-                let b = bandCache.current.get(key)
+                const cacheKey = `${key}#${maskId(mask)}`
+                let b = bandCache.current.get(cacheKey)
                 if (!b) {
-                    b = await d.computeBands(g)
-                    bandCache.current.set(key, b)
+                    b = await d.computeBands(g, mask)
+                    bandCache.current.set(cacheKey, b)
                 }
                 if (request !== latest.current) return
                 setGrid(g)
@@ -90,11 +102,11 @@ export function useWindowData(index: DataIndex | null, day: DayKey, hour: number
                 console.error(`loading ${key}`, e)
                 setStatus('error')
             })
-    }, [index, key, day, hour, attempt])
+    }, [index, key, day, hour, attempt, mask])
 
     const retry = useCallback(() => {
         depsRef.current.evictGrid(key)
-        bandCache.current.delete(key)
+        for (const k of [...bandCache.current.keys()]) if (k.startsWith(`${key}#`)) bandCache.current.delete(k)
         setAttempt(a => a + 1)
     }, [key])
 

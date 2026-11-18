@@ -27,6 +27,17 @@ const bandArea = (b: Band) => b.positions.reduce((s, [outer, ...holes]) =>
 // distance-like travel times from the grid's middle: 10 at the centre rising to ~ 30 at the corners
 const radial = grid((x, y) => 10 + Math.round(5 * Math.hypot(x - 2.5, y - 2.5)))
 
+describe('buildBands with a mask', () => {
+    it('treats cells outside the mask as unreachable', () => {
+        const uniform = grid(() => 10)
+        const left = new Uint8Array(36).map((_, i) => (i % 6 < 3 ? 1 : 0))
+        const [b] = buildBands(uniform, [15], null, left)
+        const lngs = b.positions.flat(2).map(([, lng]) => lng)
+        expect(Math.max(...lngs)).toBeLessThan(3)
+        expect(buildBands(uniform, [15], null, new Uint8Array(36))).toEqual([])
+    })
+})
+
 describe('buildBands', () => {
     it('largest first', () => {
         expect(buildBands(radial, [15, 20], null).map(b => b.time)).toEqual([20, 15])
