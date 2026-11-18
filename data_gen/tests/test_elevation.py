@@ -65,4 +65,13 @@ def test_interpolate_water_edges():
 
 
 def test_climb_hysteresis():
-    assert climb(np.array([0, 1, 0, 1, 0, 10, 4.0])) == (10, 6)
+    assert climb(np.array([0, 1, 0, 1, 0, 10, 4.0]), hysteresis=2) == (10, 6)
+
+
+def test_climb_ignores_surface_noise():
+    # SRTM is a surface model: trees and roofs add +-4..8 m wiggles that are not climbing
+    flat = np.array([20, 26, 18, 27, 19, 25, 20, 28, 21.0])
+    assert climb(flat) == (0, 0)
+    hill = np.array([20, 26, 18, 35, 50, 44, 52, 30, 20.0])
+    up, down = climb(hill)
+    assert 25 <= up <= 35 and 25 <= down <= 35
