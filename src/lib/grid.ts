@@ -45,7 +45,7 @@ export const dataUrl = (file: string) => `${import.meta.env.BASE_URL}data/${file
 export const windowKey = (day: DayKey, hour: number) => `${day}-${String(hour).padStart(2, '0')}`
 
 /** Gunzips unless the host already did (it may serve the file with Content-Encoding: gzip). */
-async function gunzip(body: ArrayBuffer): Promise<ArrayBuffer> {
+export async function gunzip(body: ArrayBuffer): Promise<ArrayBuffer> {
     const head = new Uint8Array(body, 0, Math.min(2, body.byteLength))
     if (head[0] !== 0x1f || head[1] !== 0x8b) return body
     const stream = new Blob([body]).stream().pipeThrough(new DecompressionStream('gzip'))
