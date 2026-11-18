@@ -91,7 +91,7 @@ segment. Not built unless needed.
 |---|---|---|
 | `index.json` | gains `bike: {refSpeedKmh, mismatchRate, missingRate}` (absent = no bike data; the toggle is hidden) | startup |
 | `bike.grid.bin` | gzip of `"PMB1"`, `u16` version, `u32` width, `u32` height (LE), then planes `seconds: u16` (`0xFFFF` = unreachable) and `path: u16` (`0xFFFF` = none). Row 0 = south. Width/height must equal `index.json.grid`. | Bike first selected |
-| `bike.routes.json` | `{refSpeedKmh, shapes: ["<polyline>", …], elev: [[h0, Δ1, Δ2, …], …], paths: [[seconds, metres, ascent, descent, [segment…]], …]}`; `shapes[i]` and `elev[i]` describe segment `i`; `elev` is metres at 50 m spacing (last gap shorter), first value absolute, the rest deltas | first Bike click |
+| `bike.routes.json` | `{refSpeedKmh, shapes: ["<polyline>", …], lengths: [metres, …], elev: [[h0, Δ1, Δ2, …] | null, …], paths: [[seconds, metres, ascent, descent, [segment…]], …]}`; `shapes[i]`, `lengths[i]` and `elev[i]` describe segment `i`; `elev` is metres from the segment's start vertex to its end vertex at 50 m spacing (last gap shorter), first value absolute, the rest deltas, `null` = no elevation data; `ascent`/`descent` are `null` when any of the path's segments has none | first Bike click |
 
 Seconds are at `refSpeedKmh`. A cell's distance is `seconds × refSpeedKmh / 3.6` metres.
 
