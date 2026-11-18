@@ -36,6 +36,12 @@ describe('useClickedRide', () => {
         await waitFor(() => expect(result.current?.result).toMatchObject({speed: 25}))
     })
 
+    it('prefetches the ride routes as soon as a bike view is on screen', () => {
+        const d = deps()
+        renderHook(() => useClickedRide(null, GRID, 'bike@15', INDEX, d))
+        expect(d.loadBikeRoutes).toHaveBeenCalled()
+    })
+
     it('ignores transit keys', () => {
         const d = deps()
         const {result} = renderHook(() => useClickedRide(P, GRID, 'weekday-08', INDEX, d))

@@ -70,8 +70,10 @@ and lets MOTIS serve direct rides of up to 3 h (`street_routing_max_direct_secon
 2. **Paths** – one direct BIKE `/api/v5/plan` per 5×5-cell block (~500 m), from its reachable point nearest the
    centre; every cell in the block shows that path. Each MOTIS step is a segment keyed by its OSM nodes, so streets
    shared by many rides are stored once.
-3. **Elevation** – heights every 50 m along each segment from the SRTM tiles (voids filled, 5×5 median filter
-   against trees and roofs; samples over water — bridges — interpolated from the banks).
+3. **Elevation** – heights every 50 m along each segment from the SRTM tiles, which measure the surface, not the
+   ground: voids are filled, a 9×9 (~270 m) opening removes towers and trees, a 5×5 median removes what spikes are
+   left, and samples over water — bridges — are interpolated from the banks. Climb and descent are summed between
+   turning points that reverse by at least 5 m.
 
 | File | Content |
 |---|---|

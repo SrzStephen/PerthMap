@@ -318,6 +318,18 @@ def parse_hours(spec: str) -> list[int]:
     return out
 
 
+def merged_index(old: dict, new: dict) -> dict:
+    """index.json written by `route`: `new`, keeping the `bike` stage's entry while the grid is unchanged
+    (a changed grid makes bike.grid.bin stale, so the entry - and the Bike toggle - goes until `bike` reruns)."""
+    out = dict(new)
+    if "bike" in old:
+        if old.get("grid") == new.get("grid"):
+            out["bike"] = old["bike"]
+        else:
+            log("grid changed: dropping the bike entry from index.json - rerun the `bike` stage")
+    return out
+
+
 def write_json(path: Path, obj) -> None:
     path.write_text(json.dumps(obj, separators=(",", ":")))
 
@@ -848,7 +860,7 @@ def route(args: argparse.Namespace) -> None:
     write_water(meta, WEB / "water.json")
     index_path = WEB / "index.json"
     old = json.loads(index_path.read_text()) if index_path.exists() else {}
-    write_json(index_path, {
+    write_json(index_path, merged_index(old, {
         "version": GRID_VERSION,
         "generated": datetime.now(PERTH).isoformat(timespec="seconds"),
         "grid": {"width": meta.width, "height": meta.height, "minLon": meta.min_lon, "minLat": meta.min_lat,
@@ -857,7 +869,7 @@ def route(args: argparse.Namespace) -> None:
         "hours": list(range(6, 22)),
         "mismatchRate": {**old.get("mismatchRate", {}), **mismatch},
         "missingRate": {**old.get("missingRate", {}), **missing_rate},
-    })
+    }))
     log(f"wrote {len(windows)} windows -> {WEB}  (copy to public/data/)")
 
 

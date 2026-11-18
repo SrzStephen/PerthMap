@@ -27,6 +27,11 @@ export function useClickedRide(point: [number, number] | null, grid: Grid | null
     const [resolved, setResolved] = useState<ClickedRide | null>(null)
     const bikeKey = isBikeKey(loadedKey) ? loadedKey : null
 
+    // ~1.5 MB: start fetching when Bike is on screen, not on the first click (errors surface when one resolves)
+    useEffect(() => {
+        if (bikeKey) deps.loadBikeRoutes().catch(() => undefined)
+    }, [bikeKey, deps])
+
     useEffect(() => {
         if (!point || !grid || !bikeKey || !index?.bike) return
         let cancelled = false

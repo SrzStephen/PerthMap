@@ -67,16 +67,20 @@ re-import beyond the config change; the existing index is reused.
    ids. Segment geometry is simplified to ~5 m and encoded (precision 5), as for transit shapes.
 5. **Elevation.**
    - *Raster.* Load the SRTM tiles (`.hgt`: big-endian `int16`, square, row 0 = north, −32768 = void) into one
-     array covering the grid bbox; fill voids from the mean of valid 3×3 neighbours; apply a 5×5 median filter
-     (numpy `sliding_window_view`, ~150 m) to remove single-pixel spikes from trees and buildings.
+     array covering the grid bbox; fill voids from the mean of valid 3×3 neighbours; apply a 9×9 grey opening
+     (min then max filter, ~270 m) so towers and stands of trees become ground (SRTM reads 46 m at the CBD, 29 m
+     after it; Kings Park and the Scarp are unchanged), then a 5×5 median filter (numpy `sliding_window_view`,
+     ~150 m) against remaining single-pixel spikes. *(Opening added during implementation: every ride ended in a
+     tower spike.)*
    - *Sampling.* Per path (unsimplified geometry, all its steps concatenated), sample every 50 m by bilinear
      interpolation, always including each segment's end vertex. Samples inside `water.parquet` polygons (bridges:
      SRTM records the water surface) are replaced by linear interpolation between the nearest land samples
      before and after along the path.
    - *Storage.* A segment's heights are taken from the first path that registers it and reused by later paths
      (its samples are the path's samples from the segment's start to its end vertex). Metres, rounded to integers.
-   - *Totals.* Per path, ascent/descent from the concatenated profile with 2 m hysteresis (wiggles under 2 m
-     ignored).
+   - *Totals.* Per path, ascent/descent summed between turning points of the concatenated profile: a peak or
+     valley counts once the profile reverses by 5 m (residual DEM noise below that is ignored; 2 m roughly doubled
+     the totals, 10 m dropped real 8 m dune ridges).
 6. **Consistency.** Share of representatives whose plan duration differs from their own grid seconds by > 120 s;
    logged, written to `index.json`, warning above 5 %. A representative with no plan is recorded as missing; the
    run continues. Zero reachable cells fails the run.
@@ -141,7 +145,7 @@ for that segment's path (panel shows time, distance, map path only); the run log
 
 **Pipeline (pytest, MOTIS mocked)** — bike grid encode/decode round-trip incl. sentinels; representative choice
 (nearest reachable to centre, empty blocks); segment keying and sharing (two paths with a common suffix share
-segments, first steps never shared); HGT bilinear sampling on a synthetic tile incl. void fill; median filter
+segments, first steps never shared); HGT bilinear sampling on a synthetic tile incl. void fill; opening removes a tower block but keeps a wide hill; median filter
 removes a spike; water samples interpolated across a synthetic river; ascent/descent with hysteresis; `refSpeedKmh` from plans;
 mismatch rate.
 

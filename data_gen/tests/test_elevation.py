@@ -79,9 +79,14 @@ def test_climb_hysteresis():
 
 
 def test_climb_ignores_surface_noise():
-    # SRTM is a surface model: trees and roofs add +-4..8 m wiggles that are not climbing
-    flat = np.array([20, 26, 18, 27, 19, 25, 20, 28, 21.0])
+    # after the opening and median, SRTM still wiggles a few metres where nothing is climbed
+    flat = np.array([20, 23, 19, 22, 20, 24, 21, 23, 20.0])
     assert climb(flat) == (0, 0)
-    hill = np.array([20, 26, 18, 35, 50, 44, 52, 30, 20.0])
-    up, down = climb(hill)
-    assert 25 <= up <= 35 and 25 <= down <= 35
+    hill = np.array([20, 23, 19, 35, 50, 47, 52, 30, 20.0])
+    assert climb(hill) == (32, 32)
+
+
+def test_climb_counts_dune_ridges():
+    # the coastal plain's 8 m dune ridges are real climbs
+    dunes = np.array([10, 14, 18, 12, 10, 17, 18, 11, 10.0])
+    assert climb(dunes) == (16, 16)

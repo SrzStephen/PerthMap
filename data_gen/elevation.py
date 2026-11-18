@@ -144,9 +144,9 @@ def interpolate_water(heights: np.ndarray, wet: np.ndarray) -> np.ndarray:
     return out
 
 
-def climb(heights: np.ndarray, hysteresis: float = 10.0) -> tuple[int, int]:
+def climb(heights: np.ndarray, hysteresis: float = 5.0) -> tuple[int, int]:
     """(ascent, descent) in whole metres between turning points; a peak or valley only counts once the profile
-    reverses by more than `hysteresis` (10 m by default: SRTM's trees and roofs add wiggles of several metres)."""
+    reverses by more than `hysteresis` (5 m: what is left of SRTM's tree and roof noise after `opening`)."""
     h = np.asarray(heights, dtype=float)
     if h.size == 0:
         return 0, 0
