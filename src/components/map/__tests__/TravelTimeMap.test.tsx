@@ -5,6 +5,7 @@ import {TravelTimeMap} from '../TravelTimeMap'
 import type {Band} from '../../../lib/bands'
 
 const handlers = vi.hoisted(() => ({click: undefined as undefined | ((e: { latlng: { lat: number; lng: number } }) => void)}))
+const flyTo = vi.hoisted(() => vi.fn())
 
 vi.mock('react-leaflet', () => {
     const Div = ({children}: { children?: ReactNode }) => <div>{children}</div>
@@ -13,6 +14,7 @@ vi.mock('react-leaflet', () => {
         Pane: ({children, name}: { children?: ReactNode; name: string }) => <div data-pane-name={name}>{children}</div>,
         TileLayer: ({url}: { url: string }) => <div data-testid="tile-layer" data-url={url}/>,
         ZoomControl: () => null,
+        useMap: () => ({flyTo}),
         Marker: () => <div data-testid="marker"/>,
         useMapEvents: (h: typeof handlers) => {
             handlers.click = h.click
@@ -68,5 +70,14 @@ describe('TravelTimeMap', () => {
     it('renders the CBD marker', () => {
         render(<TravelTimeMap minutes={45} bands={BANDS}/>)
         expect(screen.getByTestId('marker')).toBeInTheDocument()
+    })
+})
+
+describe('TravelTimeMap focus', () => {
+    it('flies to a searched place', () => {
+        const {rerender} = render(<TravelTimeMap minutes={45} bands={BANDS}/>)
+        expect(flyTo).not.toHaveBeenCalled()
+        rerender(<TravelTimeMap minutes={45} bands={BANDS} focus={[-31.93, 115.81]}/>)
+        expect(flyTo).toHaveBeenCalledWith([-31.93, 115.81], 16)
     })
 })

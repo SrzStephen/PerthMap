@@ -1,5 +1,5 @@
-import {useRef, type ReactNode} from 'react'
-import {MapContainer, Pane, Polygon, TileLayer, ZoomControl, useMapEvents} from 'react-leaflet'
+import {useEffect, useRef, type ReactNode} from 'react'
+import {MapContainer, Pane, Polygon, TileLayer, ZoomControl, useMap, useMapEvents} from 'react-leaflet'
 import {bandColor, type Band} from '../../lib/bands'
 import {CbdMarker} from './CbdMarker'
 
@@ -17,6 +17,16 @@ interface TravelTimeMapProps {
     onMapClick?: (lat: number, lng: number) => void
     /** Route overlay, drawn above the bands and below the labels. */
     children?: ReactNode
+    /** A searched place to fly to. */
+    focus?: [number, number] | null
+}
+
+function FlyTo({focus}: { focus: [number, number] }) {
+    const map = useMap()
+    useEffect(() => {
+        map.flyTo(focus, 16)
+    }, [map, focus])
+    return null
 }
 
 function ClickHandler({onMapClick}: { onMapClick: (lat: number, lng: number) => void }) {
@@ -31,7 +41,7 @@ function useGeneration(value: unknown) {
     return ref.current.gen
 }
 
-export function TravelTimeMap({minutes, bands, onMapClick, children}: TravelTimeMapProps) {
+export function TravelTimeMap({minutes, bands, onMapClick, children, focus}: TravelTimeMapProps) {
     // Leaflet appends newly added paths last, so a band that appears with a new window would paint over the inner
     // ones. Remounting every band whenever the list changes keeps the largest-first paint order.
     const gen = useGeneration(bands)
@@ -40,6 +50,7 @@ export function TravelTimeMap({minutes, bands, onMapClick, children}: TravelTime
             <TileLayer url={BASE_TILES} attribution={ATTRIBUTION} maxZoom={16}/>
             <ZoomControl position="bottomright"/>
             {onMapClick && <ClickHandler onMapClick={onMapClick}/>}
+            {focus && <FlyTo focus={focus}/>}
             {/* Bands are opaque inside a translucent pane: smaller bands (later in the SVG) cover larger ones,
                 so each area shows exactly one flat colour instead of stacked alpha. Every band stays mounted in
                 largest-first order; hidden bands just drop their fill. */}

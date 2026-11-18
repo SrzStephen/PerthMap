@@ -4,10 +4,12 @@ import {TravelTimeMap} from './components/map/TravelTimeMap'
 import {IntakeLayer} from './components/map/IntakeLayer'
 import {ControlCard} from './components/panel/ControlCard'
 import {SchoolPicker} from './components/panel/SchoolPicker'
+import {AddressSearch} from './components/panel/AddressSearch'
 import {RouteOverlay} from './components/route/RouteOverlay'
 import {PropertyReport} from './components/report/PropertyReport'
 import type {SchoolsState} from './components/report/SchoolsSection'
 import {THRESHOLDS} from './lib/bands'
+import type {Place} from './lib/geocode'
 import {loadIndex, type DataIndex, type DayKey} from './lib/grid'
 import {intakeAt, intakeMask, loadSchoolData, type SchoolData} from './lib/schools'
 import {useClickedRoute} from './lib/useClickedRoute'
@@ -60,13 +62,23 @@ function App() {
     const highlight = useMemo(() => (schools && typeof schools === 'object'
         ? [schools.primary, schools.secondary].filter(s => s !== null).map(s => s.index) : []), [schools])
 
+    // the searched address names the report until the next click
+    const [place, setPlace] = useState<{ point: [number, number]; label: string } | null>(null)
+    const [focus, setFocus] = useState<[number, number] | null>(null)
     const onMapClick = useCallback((lat: number, lng: number) => setClicked([lat, lng]), [])
+    const onPlace = useCallback((p: Place) => {
+        const point: [number, number] = [p.lat, p.lng]
+        setClicked(point)
+        setPlace({point, label: p.label})
+        setFocus(point)
+    }, [])
     const close = useCallback(() => setClicked(null), [])
     const loaded = typeof schoolData === 'object' ? schoolData : null
+    const title = route && (place?.point === route.point ? place.label : pointTitle(route.point))
 
     return (
         <main className="relative h-[100dvh] w-screen overflow-hidden">
-            <TravelTimeMap minutes={minutes} bands={bands} onMapClick={onMapClick}>
+            <TravelTimeMap minutes={minutes} bands={bands} onMapClick={onMapClick} focus={focus}>
                 {loaded && <IntakeLayer areas={loaded.areas} selected={selected} highlight={highlight}/>}
                 {route && <RouteOverlay point={route.point} result={route.result} routes={route.routes} stops={route.stops}/>}
             </TravelTimeMap>
@@ -76,12 +88,15 @@ function App() {
                 hours={index?.hours ?? DEFAULT_HOURS} hour={hour} onHourChange={setHour}
                 status={indexFailed ? 'error' : status}
                 onRetry={indexFailed ? () => setIndexFailed(false) : retry}
-                filters={loaded && (
-                    <SchoolPicker schools={loaded.schools} selected={selected} onChange={setSelected} empty={maskEmpty}/>
-                )}
+                filters={<>
+                    <AddressSearch onSelect={onPlace}/>
+                    {loaded && (
+                        <SchoolPicker schools={loaded.schools} selected={selected} onChange={setSelected} empty={maskEmpty}/>
+                    )}
+                </>}
             >
-                {route && (
-                    <PropertyReport title={pointTitle(route.point)} route={route} schools={schools}
+                {route && title && (
+                    <PropertyReport title={title} route={route} schools={schools}
                                     asOf={loaded?.asOf ?? null} onClose={close}/>
                 )}
             </ControlCard>
