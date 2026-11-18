@@ -5,18 +5,18 @@ Stages (run in order by docker compose, or individually):
   prepare     crop OSM to Perth, download the current Transperth GTFS, write MOTIS config.yml,
               then build the masks below
   masks       extract walkable paths and water areas from the Perth OSM extract
-  route       query a running MOTIS server and compute a travel time for every grid point
-  isochrones  turn grid travel times into the polygons the web app renders (poly.json)
+  route       query a running MOTIS server; write the web app's data (data/results/web/)
 
-How `route` works (two cheap passes instead of ~200k individual journey plans):
+How `route` works, for 3 days (weekday/Saturday/Sunday) x 16 one-hour arrive-by windows:
 
-  1. Transit leg: one `/api/v6/one-to-all` arrive-by query from the destination per
-     arrival time in the window. That gives, for every reachable stop, how long before
-     the arrival time you must leave that stop.
+  1. Transit leg: one `/api/v6/one-to-all` arrive-by query from the destination per arrival
+     sample (every 5 min). That gives, for every reachable stop, how long before the arrival
+     time you must leave that stop.
   2. Access leg: one batched `/api/v1/one-to-many` WALK query per reachable stop to the
-     grid points around it (independent of time, so done once).
-  3. Combine: time(grid, T) = min(direct walk, min_stop walk(grid, stop) + transit(stop, T)),
-     then summarise across arrival times with a percentile.
+     walkable grid points around it (independent of time, so done once for all windows).
+  3. Combine: time(cell, T) = min(direct walk, min_stop walk(cell, stop) + transit(stop, T)),
+     keeping the winning stop; per window store the median (map colour) and the fastest sample.
+  4. Itineraries: one `/api/v5/plan` per (stop, sample) the grid uses, for the click-for-route panel.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ import sys
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -169,7 +169,7 @@ def osm_layer(src: Path, filters: list[str], geometry: str, name: str):
 
 
 def masks(args: argparse.Namespace) -> None:
-    """Walkable paths (grid points must be near one) and water areas (isochrones are clipped by them)."""
+    """Walkable paths (grid points must be near one) and water areas (the web app clips bands by them)."""
     src = INPUT / "perth.osm.pbf"
     if WALKWAYS.exists() and WATER.exists() and not getattr(args, "force", False):
         log(f"masks exist ({WALKWAYS.name}, {WATER.name}); use --force to rebuild")
@@ -248,10 +248,60 @@ def walkable(grid: pd.DataFrame, max_m: float) -> np.ndarray:
 
 
 # --------------------------------------------------------------------------- route
-def default_travel_date() -> date:
-    """Next Wednesday in Perth time (a 'typical' weekday that is inside the GTFS validity)."""
-    today = datetime.now(PERTH).date()
-    return today + timedelta(days=(2 - today.weekday()) % 7 or 7)
+DAYS = {"weekday": ("Weekday", 2), "saturday": ("Saturday", 5), "sunday": ("Sunday", 6)}  # key: (label, weekday())
+WEB = RESULTS / "web"
+
+
+def service_dates(today: date) -> dict[str, date]:
+    """Next Wednesday / Saturday / Sunday after `today` (never today: the GTFS feed may start mid-day)."""
+    return {k: today + timedelta(days=(wd - today.weekday()) % 7 or 7) for k, (_, wd) in DAYS.items()}
+
+
+def sample_times(day: date, hour: int) -> list[datetime]:
+    """Arrival samples HH:00, HH:05 ... HH:55 for one window."""
+    return [datetime.combine(day, time(hour, m), PERTH) for m in range(0, 60, 5)]
+
+
+def require_service(day: str, transits: list[pd.DataFrame]) -> None:
+    """A day with no reachable stop in any window means the GTFS feed doesn't cover the date."""
+    if all(t.empty for t in transits):
+        sys.exit(f"MOTIS returned no reachable stops for any {day} window - is the GTFS valid for that date?")
+
+
+def trip_minutes(depart: str, arrive: str) -> int:
+    """Minutes from HH:MM to HH:MM, wrapping past midnight."""
+    dh, dm = map(int, depart.split(":"))
+    ah, am = map(int, arrive.split(":"))
+    return ((ah * 60 + am) - (dh * 60 + dm)) % 1440
+
+
+def mismatch_rate(fastest: np.ndarray, via_trip: np.ndarray, tolerance: float = 5) -> float:
+    """Share of cells (with both values) where the grid time and the planned trip differ by > tolerance."""
+    ok = ~np.isnan(fastest) & ~np.isnan(via_trip)
+    return float(np.mean(np.abs(fastest[ok] - via_trip[ok]) > tolerance)) if ok.any() else 0.0
+
+
+def parse_hours(spec: str) -> list[int]:
+    """'6-21' or '7,8,17' -> hours."""
+    out = []
+    for part in spec.split(","):
+        a, _, b = part.partition("-")
+        out.extend(range(int(a), int(b or a) + 1))
+    return out
+
+
+def write_json(path: Path, obj) -> None:
+    path.write_text(json.dumps(obj, separators=(",", ":")))
+
+
+def write_water(meta: GridMeta, path: Path) -> None:
+    import geopandas as gpd
+
+    w = gpd.read_parquet(WATER)
+    b = GRID_BBOX.padded(0.01)
+    geom = w.geometry.clip_by_rect(b.min_lon, b.min_lat, b.max_lon, b.max_lat).simplify(meta.spacing / 10)
+    gpd.GeoDataFrame(geometry=geom[~geom.is_empty], crs="EPSG:4326").to_file(
+        path, driver="GeoJSON", COORDINATE_PRECISION=5)
 
 
 NONE, DIRECT = -1, -2  # Combined.stop / Summary.stop sentinels: unreachable, walk straight to work
@@ -385,7 +435,7 @@ def decode_grid(b: bytes) -> dict[str, np.ndarray]:
 def load_stops(gtfs_zip: Path) -> tuple[pd.DataFrame, dict[str, int]]:
     """GTFS stops sorted by stop_id (string); MOTIS id `transperth_<stop_id>` -> row index."""
     with zipfile.ZipFile(gtfs_zip) as z, z.open("stops.txt") as f:
-        df = pd.read_csv(f, dtype={"stop_id": str}, usecols=["stop_id", "stop_name", "stop_lat", "stop_lon"])
+        df = pd.read_csv(f, dtype={"stop_id": str}, skipinitialspace=True)[["stop_id", "stop_name", "stop_lat", "stop_lon"]]
     df = df.sort_values("stop_id", kind="stable").reset_index(drop=True)
     return df, {f"transperth_{sid}": i for i, sid in enumerate(df["stop_id"])}
 
@@ -409,44 +459,156 @@ def best_itinerary(resp: dict, arrive: datetime) -> dict | None:
     return max(ok, key=lambda it: (_utc(it["startTime"]), -it.get("transfers", 0)))
 
 
-class PathTable:
-    """Deduplicated encoded polylines; legs refer to them by index."""
+def encode_polyline(points, precision: int = 5) -> str:
+    """Google encoded polyline of (lat, lon) points."""
+    f, out, prev = 10 ** precision, [], (0, 0)
+    for lat, lon in points:
+        cur = (int(round(lat * f)), int(round(lon * f)))
+        for d in (cur[0] - prev[0], cur[1] - prev[1]):
+            v = ~(d << 1) if d < 0 else d << 1
+            while v >= 0x20:
+                out.append(chr((0x20 | (v & 0x1F)) + 63))
+                v >>= 5
+            out.append(chr(v + 63))
+        prev = cur
+    return "".join(out)
+
+
+def decode_polyline(s: str, precision: int = 6) -> list[tuple[float, float]]:
+    f, i, lat, lon, pts = 10 ** precision, 0, 0, 0, []
+    while i < len(s):
+        vals = []
+        for _ in range(2):
+            shift = result = 0
+            while True:
+                b = ord(s[i]) - 63
+                i += 1
+                result |= (b & 0x1F) << shift
+                shift += 5
+                if b < 0x20:
+                    break
+            vals.append(~(result >> 1) if result & 1 else result >> 1)
+        lat, lon = lat + vals[0], lon + vals[1]
+        pts.append((lat / f, lon / f))
+    return pts
+
+
+class RouteTables:
+    """Interned [mode, line, headsign] entries and shared leg shapes.
+
+    A leg's geometry is a slice (shape, i0, i1) of a shape: a later leg that runs along an existing shape of the
+    same line (within MATCH_M) reuses it. `finalize()` simplifies shapes between the vertices legs reference and
+    remaps every registered leg in place."""
+
+    MATCH_M = 25.0
+    SIMPLIFY_DEG = 0.00005  # ~5 m
 
     def __init__(self) -> None:
-        self.items: list[str] = []
-        self._index: dict[str, int] = {}
+        self.lines: list[list[str]] = []
+        self._line_index: dict[tuple, int] = {}
+        self._shapes: list[np.ndarray] = []  # raw (lat, lon) arrays
+        self._groups: dict[tuple, list[int]] = {}
+        self._legs: list[list] = []  # registered legs: [line, from, to, dep, arr, shape, i0, i1]
 
-    def add(self, points: str) -> int:
-        if points not in self._index:
-            self._index[points] = len(self.items)
-            self.items.append(points)
-        return self._index[points]
+    def line(self, mode: str, name: str, headsign: str) -> int:
+        key = (mode, name, headsign)
+        if key not in self._line_index:
+            self._line_index[key] = len(self.lines)
+            self.lines.append(list(key))
+        return self._line_index[key]
+
+    def add_geometry(self, group: tuple, points) -> tuple[int, int, int]:
+        from shapely import LineString, Point
+
+        pts = np.asarray(points, dtype=float)
+        xy = to_metres(pts[:, 0], pts[:, 1])
+        for s in self._groups.get(group, []):
+            sxy = to_metres(self._shapes[s][:, 0], self._shapes[s][:, 1])
+            d0 = np.hypot(*(sxy - xy[0]).T)
+            d1 = np.hypot(*(sxy - xy[-1]).T)
+            i0, i1 = int(np.argmin(d0)), int(np.argmin(d1))
+            if d0[i0] > self.MATCH_M or d1[i1] > self.MATCH_M or i1 < i0:
+                continue
+            seg = sxy[i0:i1 + 1]
+            if len(seg) == 1:
+                ok = np.all(np.hypot(*(xy - seg[0]).T) <= self.MATCH_M)
+            else:
+                line = LineString(seg)
+                ok = max(line.distance(Point(p)) for p in xy) <= self.MATCH_M
+            if ok:
+                return s, i0, i1
+        self._shapes.append(pts)
+        self._groups.setdefault(group, []).append(len(self._shapes) - 1)
+        return len(self._shapes) - 1, 0, len(pts) - 1
+
+    def register(self, leg: list) -> list:
+        self._legs.append(leg)
+        return leg
+
+    def finalize(self) -> list[str]:
+        """Encoded (precision 5), simplified shapes; registered legs' (i0, i1) remapped to them."""
+        from shapely import LineString
+
+        anchors: dict[int, set[int]] = {}
+        for leg in self._legs:
+            anchors.setdefault(leg[5], set()).update((leg[6], leg[7]))
+        out, remap = [], {}
+        for s, pts in enumerate(self._shapes):
+            keep = sorted(anchors.get(s, set()) | {0, len(pts) - 1})
+            new_pts, index = [tuple(pts[0])], {0: 0}
+            for a, b in zip(keep, keep[1:]):
+                chunk = pts[a:b + 1]
+                if len(chunk) > 2:
+                    chunk = np.asarray(LineString(chunk[:, ::-1]).simplify(self.SIMPLIFY_DEG).coords)[:, ::-1]
+                new_pts.extend(tuple(p) for p in chunk[1:])
+                index[b] = len(new_pts) - 1
+            out.append(encode_polyline(new_pts, 5))
+            remap[s] = index
+        for leg in self._legs:
+            leg[6], leg[7] = remap[leg[5]][leg[6]], remap[leg[5]][leg[7]]
+        self._legs = []
+        return out
 
 
-def trip_from_plan(it: dict, stop_ids: dict[str, int], paths: PathTable) -> dict:
-    legs = [{
-        "mode": l["mode"],
-        "line": l.get("displayName") or "",
-        "headsign": l.get("headsign") or "",
-        "from": stop_ids.get(l["from"].get("stopId") or "", -1),
-        "to": stop_ids.get(l["to"].get("stopId") or "", -1),
-        "depart": _hhmm(l["startTime"]),
-        "arrive": _hhmm(l["endTime"]),
-        "path": paths.add(l["legGeometry"]["points"]),
-    } for l in it["legs"]]
-    return {"depart": _hhmm(it["startTime"]), "arrive": _hhmm(it["endTime"]), "legs": legs}
+def _minutes(ts: str) -> int:
+    t = _utc(ts).astimezone(PERTH)
+    return t.hour * 60 + t.minute
+
+
+def trip_from_plan(it: dict, stop_ids: dict[str, int], tables: RouteTables) -> list:
+    """[depart, arrive, legs] with times in Perth minutes since midnight and legs
+    [line, from, to, depart, arrive, shape, i0, i1] (stop -1 = not a GTFS stop)."""
+    legs = []
+    for l in it["legs"]:
+        mode, name, head = l["mode"], l.get("displayName") or "", l.get("headsign") or ""
+        frm = stop_ids.get(l["from"].get("stopId") or "", -1)
+        to = stop_ids.get(l["to"].get("stopId") or "", -1)
+        group = (mode, name, head) if mode != "WALK" else (mode, to)
+        pts = decode_polyline(l["legGeometry"]["points"], 6)
+        if len(pts) < 2:  # zero-length walks come back with an empty polyline
+            pts = [(l["from"]["lat"], l["from"]["lon"]), (l["to"]["lat"], l["to"]["lon"])]
+        shape, i0, i1 = tables.add_geometry(group, pts)
+        legs.append(tables.register([tables.line(mode, name, head), frm, to,
+                                     _minutes(l["startTime"]), _minutes(l["endTime"]), shape, i0, i1]))
+    return [_minutes(it["startTime"]), _minutes(it["endTime"]), legs]
 
 
 def build_routes(pairs, plan, stop_ids: dict[str, int], samples: list[str]) -> tuple[dict, int]:
-    """`plan(stop, sample)` -> itinerary or None, for each (global stop, sample) pair."""
-    paths, trips, missing = PathTable(), {}, 0
+    """`plan(stop, sample)` -> itinerary or None, for each (global stop, sample) pair.
+
+    Longest itineraries are added first so shorter legs along the same line reuse their shapes."""
+    tables, trips, missing, plans = RouteTables(), {}, 0, []
     for stop, sample in pairs:
         it = plan(stop, sample)
         if it is None:
             missing += 1
-            continue
-        trips[f"{stop}:{sample}"] = trip_from_plan(it, stop_ids, paths)
-    return {"samples": samples, "paths": paths.items, "trips": trips}, missing
+        else:
+            plans.append((stop, sample, it))
+    plans.sort(key=lambda p: -sum(len(l["legGeometry"]["points"]) for l in p[2]["legs"]))
+    for stop, sample, it in plans:
+        trips[f"{stop}:{sample}"] = trip_from_plan(it, stop_ids, tables)
+    shapes = tables.finalize()
+    return {"samples": samples, "lines": tables.lines, "shapes": shapes, "trips": trips}, missing
 
 
 def make_grid(spacing: float) -> pd.DataFrame:
@@ -493,6 +655,7 @@ class Motis:
         r = self.s.get(f"{self.url}/api/v5/plan", timeout=60, params={
             "fromPlace": stop_id, "toPlace": f"{WORK[0]},{WORK[1]}",
             "time": arrive.isoformat(), "arriveBy": "true", "numItineraries": 1,
+            "useRoutedTransfers": "true",  # same transfer model as one_to_all, or trips leave earlier
         })
         r.raise_for_status()
         return r.json()
@@ -513,30 +676,42 @@ class Motis:
 
 
 def route(args: argparse.Namespace) -> None:
-    RESULTS.mkdir(parents=True, exist_ok=True)
+    WEB.mkdir(parents=True, exist_ok=True)
     motis = Motis(args.motis_url)
+    dates = service_dates(datetime.now(PERTH).date())
+    days = args.days.split(",")
+    hours = parse_hours(args.hours)
+    windows = [(d, h) for d in days for h in hours]
+    log(f"{len(windows)} windows: days {', '.join(f'{d} {dates[d]}' for d in days)}; hours {hours[0]}-{hours[-1]}")
 
-    travel_date = date.fromisoformat(args.date) if args.date else default_travel_date()
-    start = datetime.combine(travel_date, datetime.strptime(args.arrive_from, "%H:%M").time(), PERTH)
-    arrivals = [start + timedelta(minutes=m) for m in range(0, args.window + 1, args.step)]
-    log(f"arrive-by {arrivals[0]:%a %Y-%m-%d %H:%M} .. {arrivals[-1]:%H:%M} every {args.step} min "
-        f"({len(arrivals)} searches)")
+    # 1. transit leg: stop -> work, for every arrival sample of every window
+    def ota(job):
+        _, k, t = job
+        return motis.one_to_all(t, args.max_minutes, args.max_walk * 60).assign(t=k)
 
-    # 1. transit leg: stop -> work, for each arrival time
-    def ota(t: datetime) -> pd.DataFrame:
-        return motis.one_to_all(t, args.max_minutes, args.max_walk * 60).assign(t=t.strftime("%H:%M"))
-
+    jobs = [((d, h), k, t) for d, h in windows for k, t in enumerate(sample_times(dates[d], h))]
     with ThreadPoolExecutor(args.workers) as ex:
-        transit = pd.concat(ex.map(ota, arrivals), ignore_index=True)
-    if transit.empty:
-        sys.exit("MOTIS returned no reachable stops - is the GTFS valid for the travel date?")
-    stops = transit.groupby("stop")[["lat", "lon"]].first().reset_index()
-    stop_minutes = transit.pivot_table(index="stop", columns="t", values="minutes", aggfunc="min").reindex(stops["stop"])
-    log(f"{len(stops)} stops can reach work; sample durations (min): "
-        f"{transit['minutes'].describe()[['min', '50%', 'max']].round(1).to_dict()}")
+        parts = list(tqdm(ex.map(ota, jobs), total=len(jobs), mininterval=10))
+    by_window: dict = {}
+    for (w, _, _), part in zip(jobs, parts):
+        by_window.setdefault(w, []).append(part)
+    transit = {w: pd.concat(p, ignore_index=True) for w, p in by_window.items()}
+    for d in days:
+        require_service(d, [transit[(d, h)] for h in hours])
 
-    # 2. access leg: grid -> stop walking, one batched request per stop
+    gtfs_stops, stop_ids = load_stops(INPUT / "transperth_gtfs.zip")
+    stops = pd.concat(transit.values()).groupby("stop")[["lat", "lon"]].first().reset_index()
+    unknown = ~stops["stop"].isin(stop_ids)
+    if unknown.any():
+        log(f"warning: {unknown.sum()} stops not in GTFS stops.txt - ignored")
+    stops = stops[~unknown].reset_index(drop=True)
+    stop_global = stops["stop"].map(stop_ids).to_numpy()
+    motis_id = dict(zip(stop_global.tolist(), stops["stop"]))
+    log(f"{len(stops)} stops reach work in at least one window")
+
+    # 2. access leg (time-independent): walkable grid cells -> stops, plus direct walk to work
     grid = make_grid(args.spacing)
+    meta = grid_meta(args.spacing)
     # Only points near a walkable way: MOTIS snaps far-off points (e.g. mid-river) to the nearest path
     # without charging for the distance, which gave water cells the travel time of the bank.
     if not WALKWAYS.exists():
@@ -544,11 +719,10 @@ def route(args: argparse.Namespace) -> None:
     on_foot = walkable(grid, args.walkable_within)
     log(f"{on_foot.sum():,}/{len(grid):,} grid points within {args.walkable_within} m of a walkable way")
     grid = grid[on_foot].reset_index(drop=True)
-    grid_xy = to_metres(grid["lat"].to_numpy(), grid["lon"].to_numpy())
-    tree = cKDTree(grid_xy)
+    cells = cell_of(meta, grid["lat"].to_numpy(), grid["lon"].to_numpy())
+    tree = cKDTree(to_metres(grid["lat"].to_numpy(), grid["lon"].to_numpy()))
     radius = args.max_walk * 60 * 1.5  # m; generous crow-flies bound for a walk of max_walk minutes
-    stop_xy = to_metres(stops["lat"].to_numpy(), stops["lon"].to_numpy())
-    near = tree.query_ball_point(stop_xy, r=radius)
+    near = tree.query_ball_point(to_metres(stops["lat"].to_numpy(), stops["lon"].to_numpy()), r=radius)
 
     def access(i: int) -> tuple[np.ndarray, np.ndarray]:
         idx = np.asarray(near[i], dtype=np.int64)
@@ -567,113 +741,66 @@ def route(args: argparse.Namespace) -> None:
             g_stop.append(np.full(idx.size, s))
             g_walk.append(secs / 60)
     g_idx, g_stop, g_walk = map(np.concatenate, (g_idx, g_stop, g_walk))
-
-    # direct walk to work (no transit)
     w_idx = np.asarray(tree.query_ball_point(to_metres(np.array([WORK[0]]), np.array([WORK[1]]))[0], r=radius * 2))
     w_min = motis.walk_times(WORK, grid[["lat", "lon"]].to_numpy()[w_idx], args.max_walk * 120, args.snap) / 60
 
-    # 3. combine per arrival time, then summarise
-    per_t = combine(len(grid), g_idx, g_stop, g_walk, stop_minutes.to_numpy(), w_idx, w_min).total
+    # 3. per window: combine, summarise, plan the fastest trips, write files
+    mismatch = {}
+    for day, hour in windows:
+        key = f"{day}-{hour:02d}"
+        times = sample_times(dates[day], hour)
+        samples = [t.strftime("%H:%M") for t in times]
+        tw = transit[(day, hour)]
+        stop_minutes = np.full((len(stops), len(times)), np.nan)
+        if not tw.empty:
+            stop_minutes = (tw.pivot_table(index="stop", columns="t", values="minutes", aggfunc="min")
+                            .reindex(index=stops["stop"], columns=range(len(times))).to_numpy(dtype=float))
+        s = summarise(combine(len(grid), g_idx, g_stop, g_walk, stop_minutes, w_idx, w_min))
+        (WEB / f"{key}.grid.bin.gz").write_bytes(encode_grid(s, cells, meta, stop_global))
 
-    with np.errstate(all="ignore"):
-        grid["travel_time"] = np.nanpercentile(per_t, args.percentile, axis=0)
-        grid["travel_time_min"] = np.nanmin(per_t, axis=0)
-        grid["travel_time_max"] = np.nanmax(per_t, axis=0)
-    out = grid.dropna(subset=["travel_time"])
-    out.to_csv(RESULTS / "grid_travel_times.csv", index=False)
-    (RESULTS / "run.json").write_text(json.dumps({
-        "travel_date": travel_date.isoformat(), "arrivals": [a.isoformat() for a in arrivals],
-        "percentile": args.percentile, "spacing_deg": args.spacing, "max_walk_min": args.max_walk,
-        "walkable_within_m": args.walkable_within,
-        "grid_points": len(grid), "reachable_points": len(out), "stops": len(stops),
+        used = s.stop >= 0
+        pairs = sorted(set(zip(stop_global[s.stop[used]].tolist(), s.sample[used].tolist())))
+
+        def fetch(pair):
+            stop, k = pair
+            try:
+                return pair, best_itinerary(motis.plan(motis_id[stop], times[k]), times[k])
+            except requests.RequestException as e:
+                log(f"warning: plan {motis_id[stop]} @ {samples[k]} failed: {e}")
+                return pair, None
+
+        with ThreadPoolExecutor(args.workers) as ex:
+            plans = dict(ex.map(fetch, pairs))
+        routes, missing = build_routes(pairs, lambda st, k: plans[(st, k)], stop_ids, samples)
+        write_json(WEB / f"{key}.routes.json", routes)
+
+        via = np.full(len(grid), np.nan)
+        for i in np.flatnonzero(used):
+            trip = routes["trips"].get(f"{stop_global[s.stop[i]]}:{s.sample[i]}")
+            if trip:
+                target = times[s.sample[i]].hour * 60 + times[s.sample[i]].minute
+                via[i] = s.walk[i] + (target - trip[0]) % 1440
+        mismatch[key] = round(mismatch_rate(s.fastest, via), 4)
+        flag = "  WARNING: > 5% mismatch" if mismatch[key] > 0.05 else ""
+        log(f"{key}: {np.isfinite(s.median).sum():,} cells reachable, {len(pairs):,} trips "
+            f"({missing} missing), mismatch {mismatch[key]:.1%}{flag}")
+
+    # 4. shared files
+    write_json(WEB / "stops.json", [[r.stop_name, round(r.stop_lat, 5), round(r.stop_lon, 5)]
+                                     for r in gtfs_stops.itertuples()])
+    write_water(meta, WEB / "water.json")
+    index_path = WEB / "index.json"
+    old = json.loads(index_path.read_text()) if index_path.exists() else {}
+    write_json(index_path, {
+        "version": GRID_VERSION,
         "generated": datetime.now(PERTH).isoformat(timespec="seconds"),
-    }, indent=2))
-    log(f"{len(out):,}/{len(grid):,} grid points reachable; median {out.travel_time.median():.1f} min "
-        f"-> {RESULTS / 'grid_travel_times.csv'}")
-
-
-# ----------------------------------------------------------------------- isochrones
-# matplotlib 'plasma' anchors (r, g, b) - avoids pulling matplotlib in just for a colormap.
-_PLASMA = np.array([
-    [0.050383, 0.029803, 0.527975], [0.274952, 0.012588, 0.622364], [0.494877, 0.011990, 0.657865],
-    [0.665129, 0.138566, 0.585582], [0.798216, 0.280197, 0.469538], [0.902323, 0.425383, 0.359915],
-    [0.973416, 0.585761, 0.251540], [0.993814, 0.765863, 0.159460], [0.940015, 0.975158, 0.131326],
-])
-
-
-def plasma_r(n: int) -> np.ndarray:
-    x = np.linspace(1, 0, n) * (len(_PLASMA) - 1)
-    return np.array([np.interp(x, np.arange(len(_PLASMA)), _PLASMA[:, c]) for c in range(3)]).T
-
-
-def band_polygons(ix: np.ndarray, iy: np.ndarray, shape: tuple[int, int], close: int, min_hole: int):
-    """Grid cells -> (Multi)Polygon in cell units. Closing fills 1-cell speckle, small holes are filled."""
-    from scipy import ndimage
-    from shapely import box, coverage_union_all
-
-    cells = np.zeros(shape, dtype=bool)
-    cells[iy, ix] = True
-    if close:
-        cells = ndimage.binary_closing(np.pad(cells, close), iterations=close)[close:-close, close:-close] | cells
-    holes, n = ndimage.label(~cells)
-    if n:
-        sizes = ndimage.sum_labels(np.ones_like(holes), holes, index=np.arange(1, n + 1))
-        edge = np.unique(np.concatenate([holes[0], holes[-1], holes[:, 0], holes[:, -1]]))
-        small = np.flatnonzero(sizes < min_hole) + 1
-        cells |= np.isin(holes, np.setdiff1d(small, edge))
-    yy, xx = np.nonzero(cells)
-    if not len(xx):
-        return None
-    return coverage_union_all(box(xx - 0.5, yy - 0.5, xx + 0.5, yy + 0.5))
-
-
-def isochrones(args: argparse.Namespace) -> None:
-    """Band polygons straight from the grid cells (no hull), smoothed and clipped to land."""
-    import geopandas as gpd
-    from shapely import make_valid, unary_union
-    from shapely.affinity import affine_transform
-
-    run = json.loads((RESULTS / "run.json").read_text())
-    s = run["spacing_deg"]
-    df = pd.read_csv(RESULTS / "grid_travel_times.csv")
-    ix = np.rint((df.lon.to_numpy() - GRID_BBOX.min_lon) / s).astype(int)
-    iy = np.rint((df.lat.to_numpy() - GRID_BBOX.min_lat) / s).astype(int)
-    shape = (iy.max() + 1, ix.max() + 1)
-    to_lonlat = [s, 0, 0, s, GRID_BBOX.min_lon, GRID_BBOX.min_lat]
-
-    water = None
-    if WATER.exists() and not args.no_water:
-        w = gpd.read_parquet(WATER)
-        # ~10 m tolerance keeps the shoreline honest without thousands of extra vertices per band
-        water = make_valid(unary_union(w.geometry.simplify(s / 10).values))
-        log(f"clipping to land with {len(w):,} water polygons")
-
-    steps = list(range(args.first, args.last, args.every))
-    rows = []
-    for step in steps:
-        sel = df.travel_time.to_numpy() < step
-        geom = band_polygons(ix[sel], iy[sel], shape, args.close, args.min_hole)
-        if geom is None:
-            continue
-        # round off the staircase a little, then back to lon/lat
-        r = args.smooth
-        geom = geom.buffer(r, join_style="round").buffer(-r, join_style="round").simplify(0.25)
-        geom = affine_transform(geom, to_lonlat)
-        if water is not None:
-            geom = make_valid(geom.difference(water))
-        # drop slivers left by the clip (under ~1 cell) and thin out the shoreline vertices
-        parts = [g for g in getattr(geom, "geoms", [geom]) if g.geom_type == "Polygon" and g.area >= s * s]
-        geom = unary_union(parts).simplify(s / 5).buffer(0) if parts else geom.__class__()
-        if not geom.is_empty:
-            rows.append({"index": step, "time": step, "geometry": geom})
-            log(f"{step:3d} min: {geom.geom_type}, {len(getattr(geom, 'geoms', [geom]))} part(s)")
-    gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
-    rgb = plasma_r(len(steps))[[steps.index(s) for s in gdf["time"]]]
-    gdf[["r", "g", "b"]] = rgb.round(6)
-    gdf["a"] = 1.0
-    out = RESULTS / "poly.json"
-    gdf[::-1][["index", "time", "r", "g", "b", "a", "geometry"]].to_file(out, driver="GeoJSON", COORDINATE_PRECISION=5)
-    log(f"wrote {len(gdf)} isochrones -> {out}  (copy to src/assets/poly.json)")
+        "grid": {"width": meta.width, "height": meta.height, "minLon": meta.min_lon, "minLat": meta.min_lat,
+                 "spacing": meta.spacing},
+        "days": [{"key": d, "label": DAYS[d][0], "date": dates[d].isoformat()} for d in DAYS],
+        "hours": list(range(6, 22)),
+        "mismatchRate": {**old.get("mismatchRate", {}), **mismatch},
+    })
+    log(f"wrote {len(windows)} windows -> {WEB}  (copy to public/data/)")
 
 
 # ----------------------------------------------------------------------------- cli
@@ -692,11 +819,8 @@ def main() -> None:
 
     sp = sub.add_parser("route")
     sp.add_argument("--motis-url", default=os.environ.get("MOTIS_URL", "http://motis:8080"))
-    sp.add_argument("--date", help="travel date YYYY-MM-DD (default: next Wednesday, Perth time)")
-    sp.add_argument("--arrive-from", default="08:00", help="start of the arrive-by window (HH:MM)")
-    sp.add_argument("--window", type=int, default=60, help="arrive-by window length, minutes")
-    sp.add_argument("--step", type=int, default=5, help="minutes between arrival samples")
-    sp.add_argument("--percentile", type=float, default=env_float("PERCENTILE", 50))
+    sp.add_argument("--days", default="weekday,saturday,sunday", help="comma list of weekday,saturday,sunday")
+    sp.add_argument("--hours", default="6-21", help="arrive-by window start hours, e.g. 6-21 or 7,8,17")
     sp.add_argument("--spacing", type=float, default=env_float("GRID_SPACING", 0.001), help="grid spacing, degrees")
     sp.add_argument("--max-walk", type=int, default=15, help="max walk to/from transit, minutes")
     sp.add_argument("--max-minutes", type=int, default=120, help="max total journey, minutes")
@@ -705,16 +829,6 @@ def main() -> None:
                     help="drop grid points further than this from a walkable way, m")
     sp.add_argument("--workers", type=int, default=os.cpu_count() or 8)
     sp.set_defaults(fn=route)
-
-    sp = sub.add_parser("isochrones")
-    sp.add_argument("--first", type=int, default=15)
-    sp.add_argument("--last", type=int, default=90)
-    sp.add_argument("--every", type=int, default=5)
-    sp.add_argument("--close", type=int, default=1, help="morphological closing iterations (cells)")
-    sp.add_argument("--min-hole", type=int, default=6, help="fill holes smaller than this many cells")
-    sp.add_argument("--smooth", type=float, default=0.6, help="edge rounding radius (cells)")
-    sp.add_argument("--no-water", action="store_true", help="don't clip bands to land")
-    sp.set_defaults(fn=isochrones)
 
     args = p.parse_args()
     args.fn(args)

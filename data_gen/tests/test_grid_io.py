@@ -49,7 +49,9 @@ def test_row0_is_south():
 def test_load_stops_sorted_ids(tmp_path):
     z = tmp_path / "g.zip"
     with zipfile.ZipFile(z, "w") as f:
-        f.writestr("stops.txt", "stop_id,stop_name,stop_lat,stop_lon\n20,B,-31.9,115.8\n100,A,-31.8,115.7\n3,C,-31.7,115.6\n")
+        # Transperth's header has spaces after the commas and CRLF line endings
+        f.writestr("stops.txt", "location_type, stop_id, stop_name, stop_lat, stop_lon\r\n"
+                                "0,20,\"B\",-31.9,115.8\r\n0,100,\"A\",-31.8,115.7\r\n0,3,\"C\",-31.7,115.6\r\n")
     df, ids = load_stops(z)
     assert df["stop_id"].tolist() == ["100", "20", "3"]
     assert ids["transperth_3"] == 2

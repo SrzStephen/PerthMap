@@ -2,8 +2,7 @@
 #
 #   cd data_gen
 #   docker compose up --build route   # prepare -> motis import -> motis server -> route
-#   docker compose run --rm isochrones
-#   cp data/results/poly.json ../src/assets/poly.json
+#   cp -r data/results/web/. ../public/data/
 #   docker compose down
 #
 # Everything (downloads, MOTIS index, results) lives in ./data, which is git-ignored.
@@ -47,15 +46,7 @@ services:
     command: ["route"]
     environment:
       MOTIS_URL: http://motis:8080
-      PERCENTILE: ${PERCENTILE:-50}
       GRID_SPACING: ${GRID_SPACING:-0.001}
     volumes: ["./data:/data"]
     depends_on:
       motis: { condition: service_healthy }
-
-  isochrones:
-    build: .
-    user: *user
-    command: ["isochrones"]
-    volumes: ["./data:/data"]
-    profiles: ["manual"]
