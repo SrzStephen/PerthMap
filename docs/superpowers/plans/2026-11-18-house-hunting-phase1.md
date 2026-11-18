@@ -35,7 +35,7 @@
 
 **Files:**
 - Create: `data_gen/intake.py` (replaces the PoC `data_gen/intake/` directory — delete it in this task)
-- Create fixtures: `data_gen/tests/fixtures/intake_5464.pdf` (copy of `/home/stephen/.claude/jobs/95318586/tmp/downloads/so_maps/5464.pdf`, Wembley PS), `data_gen/tests/fixtures/intake_5464.geojson` (PoC output `/home/stephen/.claude/jobs/95318586/tmp/out/5464.geojson`)
+- Create fixtures: `data_gen/tests/fixtures/intake_5464.pdf` (Wembley PS, already committed), `data_gen/tests/fixtures/intake_5464.geojson` (PoC output, already committed)
 - Modify: `data_gen/data/pyproject.toml` (add `pymupdf>=1.24`, `pyproj>=3.6`)
 - Test: `data_gen/tests/test_intake.py`
 
