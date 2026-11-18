@@ -44,8 +44,11 @@ export const dataUrl = (file: string) => `${import.meta.env.BASE_URL}data/${file
 
 export const windowKey = (day: DayKey, hour: number) => `${day}-${String(hour).padStart(2, '0')}`
 
-async function gunzip(gz: ArrayBuffer): Promise<ArrayBuffer> {
-    const stream = new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'))
+/** Gunzips unless the host already did (it may serve the file with Content-Encoding: gzip). */
+async function gunzip(body: ArrayBuffer): Promise<ArrayBuffer> {
+    const head = new Uint8Array(body, 0, Math.min(2, body.byteLength))
+    if (head[0] !== 0x1f || head[1] !== 0x8b) return body
+    const stream = new Blob([body]).stream().pipeThrough(new DecompressionStream('gzip'))
     return new Response(stream).arrayBuffer()
 }
 
@@ -88,7 +91,7 @@ const grids = new Map<string, Promise<Grid>>()
 export function loadGrid(index: DataIndex, key: string): Promise<Grid> {
     let p = grids.get(key)
     if (!p) {
-        p = fetchOk(`${key}.grid.bin.gz`)
+        p = fetchOk(`${key}.grid.bin`)
             .then(r => r.arrayBuffer())
             .then(buf => decodeGrid(buf, index.grid))
         p.catch(() => grids.delete(key))

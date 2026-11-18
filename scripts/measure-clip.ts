@@ -1,5 +1,5 @@
 // Times contouring with and without water clipping on a real window:
-//   npx vite-node scripts/measure-clip.ts public/data/weekday-08.grid.bin.gz public/data/water.json public/data/index.json
+//   npx vite-node scripts/measure-clip.ts public/data/weekday-08.grid.bin public/data/water.json public/data/index.json
 import {readFileSync} from 'node:fs'
 import {THRESHOLDS} from '../src/lib/bands'
 import {buildBands, waterFromGeoJSON} from '../src/lib/contours'

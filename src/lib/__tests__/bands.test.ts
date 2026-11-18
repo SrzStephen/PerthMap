@@ -1,11 +1,5 @@
 import {describe, it, expect} from 'vitest'
-import {TIMES, parseBands, bandColor, bandLabel, legendTicks} from '../bands'
-
-const ring = [[115.8, -31.9], [115.9, -31.9], [115.9, -32.0], [115.8, -31.9]]
-const feature = (time: number | string, type = 'Polygon') => ({
-    properties: {time},
-    geometry: {type, coordinates: [ring]},
-})
+import {TIMES, THRESHOLDS, bandColor, legendTicks} from '../bands'
 
 describe('TIMES', () => {
     it('lists the 16 band times from 10 to 85', () => {
@@ -15,34 +9,11 @@ describe('TIMES', () => {
     })
 })
 
-describe('parseBands', () => {
-    it('sorts bands by time descending', () => {
-        const bands = parseBands({features: [feature(10), feature(85), feature(40)]})
-        expect(bands.map(b => b.time)).toEqual([85, 40, 10])
-    })
-
-    it('swaps [lng, lat] to [lat, lng]', () => {
-        const [band] = parseBands({features: [feature(10)]})
-        expect(band.positions[0][0][0]).toEqual([-31.9, 115.8])
-    })
-
-    it('coerces string times to numbers', () => {
-        const [band] = parseBands({features: [feature('25')]})
-        expect(band.time).toBe(25)
-    })
-
-    it('reads MultiPolygon features as several polygons', () => {
-        const [band] = parseBands({
-            features: [{properties: {time: 10}, geometry: {type: 'MultiPolygon', coordinates: [[ring], [ring, ring]]}}],
-        })
-        expect(band.positions).toHaveLength(2)
-        expect(band.positions[1]).toHaveLength(2)
-        expect(band.positions[1][1][0]).toEqual([-31.9, 115.8])
-    })
-
-    it('skips other geometry types', () => {
-        const bands = parseBands({features: [feature(10), feature(20, 'Point')]})
-        expect(bands.map(b => b.time)).toEqual([10])
+describe('THRESHOLDS', () => {
+    it('contours every 5 minutes from 15 to 85', () => {
+        expect(THRESHOLDS[0]).toBe(15)
+        expect(THRESHOLDS[THRESHOLDS.length - 1]).toBe(85)
+        expect(THRESHOLDS).toHaveLength(15)
     })
 })
 
@@ -67,20 +38,9 @@ describe('bandColor', () => {
     })
 })
 
-describe('bandLabel', () => {
-    it('labels the innermost band as "Under"', () => {
-        expect(bandLabel(10, 10)).toBe('Under 10 min')
-        expect(bandLabel(15, 15)).toBe('Under 15 min')
-    })
-
-    it('labels other bands as a range with an en dash', () => {
-        expect(bandLabel(45, 15)).toBe('40–45 min')
-    })
-})
-
 describe('legendTicks', () => {
     it('labels the ends plus every 20 minutes between', () => {
         expect(legendTicks(TIMES)).toEqual([10, 30, 50, 70, 85])
-        expect(legendTicks(TIMES.slice(1))).toEqual([15, 30, 50, 70, 85])
+        expect(legendTicks(THRESHOLDS)).toEqual([15, 30, 50, 70, 85])
     })
 })

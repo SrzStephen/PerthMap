@@ -44,8 +44,8 @@ Rather than planning one journey per grid point, `route` does:
 | `index.json` | grid size/origin/spacing, days with their dates, hours, per-window mismatch rate |
 | `water.json` | simplified water + sea polygons (GeoJSON) the web app clips bands with |
 | `stops.json` | `[[name, lat, lon], …]` — every GTFS stop, sorted by `stop_id`; the index is the stop number |
-| `{day}-{HH}.grid.bin.gz` | gzip of `"PMG1"`, `u16` version, `u32` width, `u32` height (little-endian), then per cell: median, fastest, sample, walk minutes (`u8`, 255 = n/a) and stop number (`u16`, `0xFFFF` none, `0xFFFE` walk directly). Row 0 is the south edge. |
-| `{day}-{HH}.routes.json` | sample times, deduplicated leg polylines (precision 6), and trips keyed `"<stop>:<sample>"` |
+| `{day}-{HH}.grid.bin` | gzip of `"PMG1"`, `u16` version, `u32` width, `u32` height (little-endian), then per cell: median, fastest, sample, walk minutes (`u8`, 255 = n/a) and stop number (`u16`, `0xFFFF` none, `0xFFFE` walk directly). Row 0 is the south edge. |
+| `{day}-{HH}.routes.json` | `{samples, lines, shapes, trips}`: `lines` = `[mode, line, headsign]`; `shapes` = encoded polylines (precision 5, ~5 m simplified) shared by legs; `trips["<stop>:<sample>"]` = `[depart, arrive, legs]` with times in minutes since midnight (Perth) and each leg `[line, from stop, to stop, depart, arrive, shape, i0, i1]` (stop `-1` = not a GTFS stop; geometry = shape vertices `i0..i1`) |
 
 The run warns when more than 5 % of cells' planned trip differs from the grid time by over 5 minutes.
 

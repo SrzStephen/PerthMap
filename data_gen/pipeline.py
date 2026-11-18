@@ -756,7 +756,8 @@ def route(args: argparse.Namespace) -> None:
             stop_minutes = (tw.pivot_table(index="stop", columns="t", values="minutes", aggfunc="min")
                             .reindex(index=stops["stop"], columns=range(len(times))).to_numpy(dtype=float))
         s = summarise(combine(len(grid), g_idx, g_stop, g_walk, stop_minutes, w_idx, w_min))
-        (WEB / f"{key}.grid.bin.gz").write_bytes(encode_grid(s, cells, meta, stop_global))
+        # gzipped, but not named .gz: dev/static servers add Content-Encoding: gzip from the extension
+        (WEB / f"{key}.grid.bin").write_bytes(encode_grid(s, cells, meta, stop_global))
 
         used = s.stop >= 0
         pairs = sorted(set(zip(stop_global[s.stop[used]].tolist(), s.sample[used].tolist())))

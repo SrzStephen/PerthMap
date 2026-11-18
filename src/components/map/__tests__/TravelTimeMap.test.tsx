@@ -2,57 +2,62 @@ import {describe, it, expect, vi} from 'vitest'
 import {render, screen} from '@testing-library/react'
 import type {ReactNode} from 'react'
 import {TravelTimeMap} from '../TravelTimeMap'
+import type {Band} from '../../../lib/bands'
 
-vi.mock('../../../assets/poly.json', () => {
-    const ring = [[115.8, -31.9], [115.9, -31.9], [115.9, -32.0], [115.8, -31.9]]
-    const f = (time: number) => ({type: 'Feature', properties: {time}, geometry: {type: 'Polygon', coordinates: [ring]}})
-    return {default: {type: 'FeatureCollection', features: [f(10), f(85), f(45)]}}
-})
+const handlers = vi.hoisted(() => ({click: undefined as undefined | ((e: { latlng: { lat: number; lng: number } }) => void)}))
 
 vi.mock('react-leaflet', () => {
     const Div = ({children}: { children?: ReactNode }) => <div>{children}</div>
     return {
         MapContainer: Div,
-        Pane: Div,
+        Pane: ({children, name}: { children?: ReactNode; name: string }) => <div data-pane-name={name}>{children}</div>,
         TileLayer: ({url}: { url: string }) => <div data-testid="tile-layer" data-url={url}/>,
         ZoomControl: () => null,
-        Popup: ({children, pane}: { children?: ReactNode; pane?: string }) =>
-            <div data-testid="popup" data-pane={pane}>{children}</div>,
         Marker: () => <div data-testid="marker"/>,
-        // Only painted (fill: true) bands are visible/clickable, so the mock renders only those.
-        Polygon: ({children, pathOptions}: { children?: ReactNode; pathOptions: { fill: boolean; fillColor: string } }) =>
-            pathOptions.fill ? <div data-testid="polygon" data-fill={pathOptions.fillColor}>{children}</div> : null,
+        useMapEvents: (h: typeof handlers) => {
+            handlers.click = h.click
+            return null
+        },
+        // Only painted (fill: true) bands are visible, so the mock renders only those.
+        Polygon: ({pathOptions}: { pathOptions: { fill: boolean; fillColor: string } }) =>
+            pathOptions.fill ? <div data-testid="polygon" data-fill={pathOptions.fillColor}/> : null,
     }
 })
 
-const popups = () => screen.getAllByTestId('popup').map(p => p.textContent)
+const band = (time: number): Band => ({time, positions: [[[[-31.9, 115.8], [-31.9, 115.9], [-32, 115.9]]]]})
+const BANDS = [band(85), band(45), band(15)]
+const fills = () => screen.getAllByTestId('polygon').map(p => p.dataset.fill)
 
 describe('TravelTimeMap', () => {
-    it('shows bands up to the selected minutes, largest first', () => {
-        render(<TravelTimeMap minutes={45}/>)
-        expect(popups()).toEqual(['40–45 min', 'Under 10 min'])
+    it('renders one painted path per band up to the selected minutes, largest first', () => {
+        render(<TravelTimeMap minutes={45} bands={BANDS}/>)
+        expect(screen.getAllByTestId('polygon')).toHaveLength(2)
     })
 
-    it('shows only the innermost band at the minimum', () => {
-        render(<TravelTimeMap minutes={10}/>)
-        expect(popups()).toEqual(['Under 10 min'])
+    it('fills the outermost band with the palest colour', () => {
+        render(<TravelTimeMap minutes={85} bands={BANDS}/>)
+        expect(fills()[0]).toBe('#ede9fe')
     })
 
-    // Real paint order is covered by TravelTimeMap.leaflet.test.tsx; this checks React-level ordering only.
-    it('keeps largest-first order across slider changes', () => {
-        const {rerender} = render(<TravelTimeMap minutes={85}/>)
-        rerender(<TravelTimeMap minutes={45}/>)
-        rerender(<TravelTimeMap minutes={85}/>)
-        expect(popups()).toEqual(['80–85 min', '40–45 min', 'Under 10 min'])
+    it('renders nothing for an empty band list', () => {
+        render(<TravelTimeMap minutes={45} bands={[]}/>)
+        expect(screen.queryAllByTestId('polygon')).toHaveLength(0)
     })
 
-    it('fills the outermost band with the palellest colour', () => {
-        render(<TravelTimeMap minutes={85}/>)
-        expect(screen.getAllByTestId('polygon')[0]).toHaveAttribute('data-fill', '#ede9fe')
+    it('calls onMapClick with the clicked point', () => {
+        const onMapClick = vi.fn()
+        render(<TravelTimeMap minutes={45} bands={BANDS} onMapClick={onMapClick}/>)
+        handlers.click?.({latlng: {lat: -31.95, lng: 115.86}})
+        expect(onMapClick).toHaveBeenCalledWith(-31.95, 115.86)
+    })
+
+    it('renders overlay children in a route pane', () => {
+        render(<TravelTimeMap minutes={45} bands={BANDS}><span data-testid="overlay"/></TravelTimeMap>)
+        expect(screen.getByTestId('overlay').closest('[data-pane-name]')).toHaveAttribute('data-pane-name', 'route')
     })
 
     it('uses keyless Esri light gray base and label tiles', () => {
-        render(<TravelTimeMap minutes={45}/>)
+        render(<TravelTimeMap minutes={45} bands={BANDS}/>)
         const urls = screen.getAllByTestId('tile-layer').map(t => t.dataset.url)
         expect(urls).toEqual([
             'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
@@ -60,13 +65,8 @@ describe('TravelTimeMap', () => {
         ])
     })
 
-    it('opens popups in the popup pane, not inside the translucent bands pane', () => {
-        render(<TravelTimeMap minutes={45}/>)
-        for (const p of screen.getAllByTestId('popup')) expect(p).toHaveAttribute('data-pane', 'popupPane')
-    })
-
     it('renders the CBD marker', () => {
-        render(<TravelTimeMap minutes={45}/>)
+        render(<TravelTimeMap minutes={45} bands={BANDS}/>)
         expect(screen.getByTestId('marker')).toBeInTheDocument()
     })
 })

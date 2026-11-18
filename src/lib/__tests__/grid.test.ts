@@ -1,5 +1,5 @@
 // @vitest-environment node
-import {gzipSync} from 'node:zlib'
+import {gunzipSync, gzipSync} from 'node:zlib'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {DIRECT_WALK, NO_STOP, UNREACHABLE, cellAt, decodeGrid, evictGrid, loadGrid, windowKey, type DataIndex, type GridMeta} from '../grid'
 
@@ -31,6 +31,12 @@ describe('decodeGrid', () => {
         expect([...g.walk]).toEqual([3, 4, 255, 9])
         expect([...g.stop]).toEqual([300, DIRECT_WALK, NO_STOP, 7])
         expect(g.meta).toBe(META)
+    })
+
+    it('accepts a body the host already decompressed', async () => {
+        const raw = gunzipSync(Buffer.from(gridBytes()))
+        const g = await decodeGrid(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer, META)
+        expect([...g.stop]).toEqual([300, DIRECT_WALK, NO_STOP, 7])
     })
 
     it('rejects bad magic', async () => {
@@ -76,7 +82,8 @@ describe('loadGrid', () => {
         const b = await loadGrid(index, 'weekday-08')
         expect(a).toBe(b)
         expect(fetch).toHaveBeenCalledTimes(1)
-        expect(String(fetch.mock.calls[0][0])).toMatch(/data\/weekday-08\.grid\.bin\.gz$/)
+        // not .gz: some servers would add Content-Encoding: gzip from the extension and break the fetch
+        expect(String(fetch.mock.calls[0][0])).toMatch(/data\/weekday-08\.grid\.bin$/)
     })
 
     it('failed load is evicted', async () => {
