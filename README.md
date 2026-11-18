@@ -18,6 +18,13 @@ The same 60 minutes covers far less ground early on a Sunday than on a weekday m
 
 ![Sunday arriving 07:00–08:00, areas within 60 minutes](doc/sunday-early.png)
 
+### Search an address, see its schools
+Search an address (or click anywhere) for a report: the fastest route to the CBD and the public primary and
+secondary school whose local intake area covers it. Pick schools under *Limit to school intake areas* to shade only
+the parts of their intake areas within your travel time. Intake areas are extracted from the Department of
+Education's intake maps (312 of the 403 metro public schools; the rest have no usable map), so they are approximate:
+near a boundary, check the [official lookup](https://www.det.wa.edu.au/schoolsonline/home.do).
+
 ### On a phone
 <img src="doc/mobile.png" alt="Mobile view with the controls in a bottom sheet" width="260">
 
@@ -28,12 +35,16 @@ The same 60 minutes covers far less ground early on a Sunday than on a weekday m
 * [Transperths GTFS feed](https://www.transperth.wa.gov.au/About/Spatial-Data-Access) for up to date public transit route information
 * Python for data preperation
 * React-Leaflet + Vite + Tailwind for data presentation, on Esri's Light Gray Canvas basemap
+* Local intake areas © [Department of Education WA](https://www.det.wa.edu.au/schoolsonline/home.do), CC BY 4.0,
+  derived from its intake maps; school locations DET-024 (CC BY-NC 4.0) via [DataWA/SLIP](https://data.wa.gov.au)
+* Address search by [Nominatim](https://nominatim.org) (© OpenStreetMap contributors), on submit only
 
 # Data
-See [data_gen](data_gen/README.md) for how to generate data (`docker compose up --build route`, then copy
-`data_gen/data/results/web/` to `public/data/`). The site is static: each window is a small gzipped travel-time grid
+See [data_gen](data_gen/README.md) for how to generate data (`docker compose up --build route`, then
+`docker compose run --rm --no-deps route schools`, then copy `data_gen/data/results/web/` to `public/data/`). The site is static: each window is a small gzipped travel-time grid
 plus a route table, fetched on demand and contoured in the browser.
 
 # Checks
 `npm test` (web), `cd data_gen/data && uv run --group dev pytest ../tests -q` (pipeline), and with `npx vite preview
---port 4789` running, `uv run --with playwright==1.58.0 python scripts/e2e-route.py` (end to end).
+--port 4789` running, `uv run --with playwright==1.58.0 python scripts/e2e-route.py` (end to end; `--url` for
+another port).

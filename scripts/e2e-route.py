@@ -10,6 +10,7 @@ from playwright.sync_api import expect, sync_playwright
 
 URL = "http://localhost:4789/"
 VICTORIA_PARK = (828, 560)  # pixel at the default view (1440x900); Joondalup is off-screen at zoom 12
+WEMBLEY_PS = (-31.9350158, 115.80972937)  # DET-024 location, inside its own intake area
 
 
 def wait_ready(page) -> None:
@@ -20,6 +21,7 @@ def wait_ready(page) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--chrome", help="Chromium executable (default: Playwright's)")
+    ap.add_argument("--url", default=URL, help=f"app URL (default {URL})")
     ap.add_argument("--screenshots", help="directory to save e2e-desktop.png / e2e-mobile.png into")
     args = ap.parse_args()
 
@@ -28,7 +30,7 @@ def main() -> None:
         page = browser.new_page(viewport={"width": 1440, "height": 900})
         errors = []
         page.on("console", lambda m: m.type == "error" and errors.append(m.text))
-        page.goto(URL, wait_until="networkidle")
+        page.goto(args.url, wait_until="networkidle")
         wait_ready(page)
 
         page.get_by_role("radio", name="Saturday").click()
@@ -51,9 +53,34 @@ def main() -> None:
         page.keyboard.press("Escape")
         expect(panel).to_have_count(0)
 
+        # address search (Nominatim stubbed: deterministic, and no outside requests from tests)
+        page.route("https://nominatim.openstreetmap.org/**", lambda route: route.fulfill(json=[{
+            "display_name": "Wembley Primary School, Jersey Street, Wembley, Perth, Western Australia, 6014, Australia",
+            "lat": str(WEMBLEY_PS[0]), "lon": str(WEMBLEY_PS[1])}]))
+        page.get_by_role("searchbox", name="Search an address").fill("Wembley Primary School")
+        page.keyboard.press("Enter")
+        report = page.get_by_label("Property report")
+        expect(report.get_by_role("heading", level=2)).to_have_text(
+            "Wembley Primary School, Jersey Street, Wembley, Perth, Western Australia, 6014", timeout=15000)
+        expect(report).to_contain_text("Primary: Wembley Primary School")
+        expect(report).to_contain_text("Approximate — from DoE maps")
+        expect(report).to_contain_text("Best")
+        assert page.locator(".leaflet-intake-pane path").count() > 0, "intake area not drawn"
+        if args.screenshots:
+            page.screenshot(path=f"{args.screenshots}/e2e-report.png")
+        page.keyboard.press("Escape")
+
+        # limit the map to one school's intake area
+        page.get_by_role("searchbox", name="Find a school").fill("Wembley Primary")
+        page.get_by_role("option", name="Wembley Primary School").click()
+        expect(page.get_by_role("button", name="Remove Wembley Primary School")).to_be_visible()
+        wait_ready(page)
+        if args.screenshots:
+            page.screenshot(path=f"{args.screenshots}/e2e-intake.png")
+
         if args.screenshots:
             mobile = browser.new_page(viewport={"width": 390, "height": 844}, is_mobile=True, device_scale_factor=2)
-            mobile.goto(URL, wait_until="networkidle")
+            mobile.goto(args.url, wait_until="networkidle")
             wait_ready(mobile)
             mobile.screenshot(path=f"{args.screenshots}/e2e-mobile.png")
         browser.close()

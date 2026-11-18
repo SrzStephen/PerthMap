@@ -78,6 +78,6 @@ describe('TravelTimeMap focus', () => {
         const {rerender} = render(<TravelTimeMap minutes={45} bands={BANDS}/>)
         expect(flyTo).not.toHaveBeenCalled()
         rerender(<TravelTimeMap minutes={45} bands={BANDS} focus={[-31.93, 115.81]}/>)
-        expect(flyTo).toHaveBeenCalledWith([-31.93, 115.81], 16)
+        expect(flyTo).toHaveBeenCalledWith([-31.93, 115.81], 15)
     })
 })

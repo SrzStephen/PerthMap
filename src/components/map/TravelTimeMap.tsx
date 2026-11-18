@@ -24,7 +24,7 @@ interface TravelTimeMapProps {
 function FlyTo({focus}: { focus: [number, number] }) {
     const map = useMap()
     useEffect(() => {
-        map.flyTo(focus, 16)
+        map.flyTo(focus, 15) // street level, with the surrounding intake area still in view
     }, [map, focus])
     return null
 }
