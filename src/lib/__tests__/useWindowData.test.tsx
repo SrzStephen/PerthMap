@@ -63,6 +63,28 @@ describe('useWindowData', () => {
         expect((result.current.grid as unknown as {key: string}).key).toBe('weekday-09')
     })
 
+    it('does not contour a window superseded before its grid arrived', async () => {
+        const slow = deferred<Grid>()
+        const d = deps({loadGrid: vi.fn(async (_i: DataIndex, key: string) => key === 'weekday-08' ? slow.promise : fakeGrid(key))})
+        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, d), {initialProps: {h: 8}})
+        rerender({h: 9})
+        await waitFor(() => expect(result.current.status).toBe('ready'))
+        await act(async () => slow.resolve(fakeGrid('weekday-08')))
+        const contoured = (d.computeBands as ReturnType<typeof vi.fn>).mock.calls.map(c => (c[0] as unknown as {key: string}).key)
+        expect(contoured).toEqual(['weekday-09'])
+    })
+
+    it('reuses bands for a window already contoured', async () => {
+        const d = deps()
+        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, d), {initialProps: {h: 8}})
+        await waitFor(() => expect(result.current.loadedKey).toBe('weekday-08'))
+        rerender({h: 9})
+        await waitFor(() => expect(result.current.loadedKey).toBe('weekday-09'))
+        rerender({h: 8})
+        await waitFor(() => expect(result.current.loadedKey).toBe('weekday-08'))
+        expect(d.computeBands).toHaveBeenCalledTimes(2)
+    })
+
     it('error then retry', async () => {
         vi.spyOn(console, 'error').mockImplementation(() => undefined)
         let fail = true

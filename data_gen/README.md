@@ -41,7 +41,7 @@ Rather than planning one journey per grid point, `route` does:
 ## Output (`data/results/web/` → `public/data/`)
 | File | Content |
 |---|---|
-| `index.json` | grid size/origin/spacing, days with their dates, hours, per-window mismatch rate |
+| `index.json` | grid size/origin/spacing, days with their dates, hours, per-window mismatch rate (`null` = nothing to compare) and missing-trip rate |
 | `water.json` | simplified water + sea polygons (GeoJSON) the web app clips bands with |
 | `stops.json` | `[[name, lat, lon], …]` — every GTFS stop, sorted by `stop_id`; the index is the stop number |
 | `{day}-{HH}.grid.bin` | gzip of `"PMG1"`, `u16` version, `u32` width, `u32` height (little-endian), then per cell: median, fastest, sample, walk minutes (`u8`, 255 = n/a) and stop number (`u16`, `0xFFFF` none, `0xFFFE` walk directly). Row 0 is the south edge. |

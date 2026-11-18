@@ -72,6 +72,12 @@ describe('resolveRoute', () => {
         expect(resolveRoute(g, -32, 115.03, ROUTES)).toEqual({kind: 'unreachable'})
     })
 
+    it('boards at the first leg stop when MOTIS starts the trip at a nearby stop', () => {
+        // grid says stop 12, but the plan's first leg leaves from stop 7 (e.g. "Scott Rd After" vs "Before")
+        const routes: Routes = {...ROUTES, trips: {'12:3': [448, 480, [[0, 7, 4, 448, 471, 0, 0, 1]]]}}
+        expect(resolveRoute(G, -32, 115, routes)).toMatchObject({kind: 'transit', boardStop: 7})
+    })
+
     it('typical falls back to best when the median is missing', () => {
         const g = grid([{median: UNREACHABLE, fastest: 38, sample: 3, walk: 6, stop: 12}, {median: 0, fastest: 0, sample: 0, walk: 0, stop: 0}, {median: 0, fastest: 0, sample: 0, walk: 0, stop: 0}])
         expect(resolveRoute(g, -32, 115, ROUTES)).toMatchObject({kind: 'transit', typical: 38})

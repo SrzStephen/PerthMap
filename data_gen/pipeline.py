@@ -275,10 +275,17 @@ def trip_minutes(depart: str, arrive: str) -> int:
     return ((ah * 60 + am) - (dh * 60 + dm)) % 1440
 
 
-def mismatch_rate(fastest: np.ndarray, via_trip: np.ndarray, tolerance: float = 5) -> float:
-    """Share of cells (with both values) where the grid time and the planned trip differ by > tolerance."""
+def mismatch_rate(fastest: np.ndarray, via_trip: np.ndarray, tolerance: float = 5) -> float | None:
+    """Share of cells (with both values) where the grid time and the planned trip differ by > tolerance.
+
+    None when no cell has both (e.g. every plan failed): unknown, not a perfect 0 %."""
     ok = ~np.isnan(fastest) & ~np.isnan(via_trip)
-    return float(np.mean(np.abs(fastest[ok] - via_trip[ok]) > tolerance)) if ok.any() else 0.0
+    return float(np.mean(np.abs(fastest[ok] - via_trip[ok]) > tolerance)) if ok.any() else None
+
+
+def missing_share(missing: int, pairs: int) -> float:
+    """Share of (stop, sample) itineraries MOTIS couldn't plan."""
+    return missing / pairs if pairs else 0.0
 
 
 def parse_hours(spec: str) -> list[int]:
@@ -745,7 +752,7 @@ def route(args: argparse.Namespace) -> None:
     w_min = motis.walk_times(WORK, grid[["lat", "lon"]].to_numpy()[w_idx], args.max_walk * 120, args.snap) / 60
 
     # 3. per window: combine, summarise, plan the fastest trips, write files
-    mismatch = {}
+    mismatch, missing_rate = {}, {}
     for day, hour in windows:
         key = f"{day}-{hour:02d}"
         times = sample_times(dates[day], hour)
@@ -781,10 +788,20 @@ def route(args: argparse.Namespace) -> None:
             if trip:
                 target = times[s.sample[i]].hour * 60 + times[s.sample[i]].minute
                 via[i] = s.walk[i] + (target - trip[0]) % 1440
-        mismatch[key] = round(mismatch_rate(s.fastest, via), 4)
-        flag = "  WARNING: > 5% mismatch" if mismatch[key] > 0.05 else ""
+        rate = mismatch_rate(s.fastest, via)
+        mismatch[key] = None if rate is None else round(rate, 4)
+        missing_rate[key] = round(missing_share(missing, len(pairs)), 4)
+        flags = []
+        if rate is None and pairs:
+            flags.append("no trip could be compared")
+        elif rate is not None and rate > 0.05:
+            flags.append("> 5% mismatch")
+        if missing_rate[key] > 0.05:
+            flags.append(f"{missing_rate[key]:.0%} of trips missing")
+        flag = f"  WARNING: {'; '.join(flags)}" if flags else ""
+        shown = "n/a" if rate is None else f"{rate:.1%}"
         log(f"{key}: {np.isfinite(s.median).sum():,} cells reachable, {len(pairs):,} trips "
-            f"({missing} missing), mismatch {mismatch[key]:.1%}{flag}")
+            f"({missing} missing), mismatch {shown}{flag}")
 
     # 4. shared files
     write_json(WEB / "stops.json", [[r.stop_name, round(r.stop_lat, 5), round(r.stop_lon, 5)]
@@ -800,6 +817,7 @@ def route(args: argparse.Namespace) -> None:
         "days": [{"key": d, "label": DAYS[d][0], "date": dates[d].isoformat()} for d in DAYS],
         "hours": list(range(6, 22)),
         "mismatchRate": {**old.get("mismatchRate", {}), **mismatch},
+        "missingRate": {**old.get("missingRate", {}), **missing_rate},
     })
     log(f"wrote {len(windows)} windows -> {WEB}  (copy to public/data/)")
 

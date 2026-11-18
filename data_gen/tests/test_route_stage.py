@@ -36,4 +36,11 @@ def test_mismatch_rate():
     fastest = np.array([40.0, 30.0, 20.0, 50.0, np.nan])
     via_trip = np.array([41.0, 30.0, 27.0, 49.0, 10.0])
     assert mismatch_rate(fastest, via_trip) == 0.25
-    assert mismatch_rate(np.array([np.nan]), np.array([np.nan])) == 0.0
+    # nothing to compare (e.g. every plan failed) is "unknown", not a perfect 0 %
+    assert mismatch_rate(np.array([20.0]), np.array([np.nan])) is None
+
+
+def test_missing_share():
+    from pipeline import missing_share
+    assert missing_share(3, 100) == 0.03
+    assert missing_share(0, 0) == 0.0

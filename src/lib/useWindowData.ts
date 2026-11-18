@@ -57,6 +57,7 @@ export function useWindowData(index: DataIndex | null, day: DayKey, hour: number
     const [loadedKey, setLoadedKey] = useState<string | null>(null)
     const [attempt, setAttempt] = useState(0)
     const latest = useRef(0)
+    const bandCache = useRef(new Map<string, Band[]>())
     const depsRef = useRef(deps)
     depsRef.current = deps
     const key = windowKey(day, hour)
@@ -68,7 +69,13 @@ export function useWindowData(index: DataIndex | null, day: DayKey, hour: number
         setStatus('loading')
         d.loadGrid(index, key)
             .then(async g => {
-                const b = await d.computeBands(g)
+                // scrubbing: don't queue contour jobs (~0.5 s each) for windows already superseded
+                if (request !== latest.current) return
+                let b = bandCache.current.get(key)
+                if (!b) {
+                    b = await d.computeBands(g)
+                    bandCache.current.set(key, b)
+                }
                 if (request !== latest.current) return
                 setGrid(g)
                 setBands(b)
@@ -87,6 +94,7 @@ export function useWindowData(index: DataIndex | null, day: DayKey, hour: number
 
     const retry = useCallback(() => {
         depsRef.current.evictGrid(key)
+        bandCache.current.delete(key)
         setAttempt(a => a + 1)
     }, [key])
 

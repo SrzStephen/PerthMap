@@ -67,7 +67,11 @@ export function resolveRoute(grid: Grid, lat: number, lng: number, routes: Route
     const trip = stop === NO_STOP ? undefined : routes.trips[`${stop}:${grid.sample[i]}`]
     if (!trip) return {kind: 'missing', best, typical}
     const walk = grid.walk[i]
-    return {kind: 'transit', best, typical, walk, leave: leaveTime(trip[0], walk), arrive: fmtTime(trip[1]), boardStop: stop, trip}
+    // MOTIS often starts the trip at a stop next to the grid's (same intersection, other side), with no walk leg
+    // between them: the first leg's stop is where you actually board.
+    const firstFrom = trip[2][0]?.[1] ?? -1
+    const boardStop = firstFrom >= 0 ? firstFrom : stop
+    return {kind: 'transit', best, typical, walk, leave: leaveTime(trip[0], walk), arrive: fmtTime(trip[1]), boardStop, trip}
 }
 
 const MODE_NAMES: Record<string, string> = {BUS: 'Bus', FERRY: 'Ferry', RAIL: 'Train', REGIONAL_RAIL: 'Train', SUBWAY: 'Train', TRAM: 'Tram'}
