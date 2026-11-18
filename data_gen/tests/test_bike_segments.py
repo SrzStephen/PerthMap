@@ -76,6 +76,15 @@ def test_bridge_interpolated():
     assert heights.min() == 10 and heights.max() == 10
 
 
+def test_empty_step_skipped():
+    t = SegmentTable(flat_dem(), dry)
+    empty = {"polyline": {"points": "", "precision": 6}, "toOsmNode": 5}
+    a = t.add_path(1, leg([step(east(115.80, 50), 1), empty, step(east(115.81, 50), 2)]))
+    b = t.add_path(2, leg([step(east(115.79, 50), 9), step(east(115.81, 50), 2)]))
+    assert len(a[4]) == 2 and a[2] == 0
+    assert a[4][1] != b[4][1]  # keyed (5, 2) vs (9, 2): the empty step still advances the node chain
+
+
 def test_missing_dem():
     t = SegmentTable(None, dry)
     rec = t.add_path(1, leg([step(east(115.80, 50), 1), step(east(115.81, 50), 2)]))

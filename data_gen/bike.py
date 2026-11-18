@@ -100,6 +100,8 @@ class SegmentTable:
             node = st.get("toOsmNode")
             key = (prev, node) if k else (None, node, start_cell)
             prev = node
+            if not st["polyline"].get("points"):
+                continue  # MOTIS sometimes returns a step without geometry; nothing to draw or sample
             if key not in self._index:
                 new.add(self._register(key, st["polyline"]))
             ids.append(self._index[key])
