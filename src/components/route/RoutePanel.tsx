@@ -3,6 +3,8 @@ import {Bus, Footprints, Ship, TrainFront, X} from 'lucide-react'
 import {fmtTime, isWalk, legLabel, type RouteResult, type Routes, type Stops} from '../../lib/route'
 
 interface RoutePanelProps {
+    /** Heading above the times, e.g. the searched address. */
+    title?: string
     result: RouteResult
     dayLabel: string
     routes: Routes | null
@@ -22,7 +24,7 @@ const Row = ({mode, children}: { mode: string; children: React.ReactNode }) => (
     <li className="flex gap-2 text-sm"><ModeIcon mode={mode}/><span className="flex-1">{children}</span></li>
 )
 
-export function RoutePanel({result, dayLabel, routes, stops, onClose}: RoutePanelProps) {
+export function RoutePanel({title, result, dayLabel, routes, stops, onClose}: RoutePanelProps) {
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
         document.addEventListener('keydown', onKey)
@@ -35,6 +37,7 @@ export function RoutePanel({result, dayLabel, routes, stops, onClose}: RoutePane
         <div className="mt-4 border-t pt-4" aria-label="Route">
             <div className="flex items-start justify-between gap-2">
                 <div className="space-y-0.5">
+                    {title && <h2 className="text-sm font-semibold leading-snug">{title}</h2>}
                     {times}
                     {result.kind === 'transit' && (
                         <p className="text-xs text-[var(--muted)]">{`Leave ${result.leave} → arrive ${result.arrive} (${dayLabel})`}</p>

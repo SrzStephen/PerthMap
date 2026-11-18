@@ -3,9 +3,11 @@ import {useCallback, useEffect, useMemo, useState} from 'react'
 import {TravelTimeMap} from './components/map/TravelTimeMap'
 import {ControlCard} from './components/panel/ControlCard'
 import {RouteOverlay} from './components/route/RouteOverlay'
-import {RoutePanel} from './components/route/RoutePanel'
+import {PropertyReport, pointTitle} from './components/report/PropertyReport'
+import type {SchoolsState} from './components/report/SchoolsSection'
 import {THRESHOLDS} from './lib/bands'
 import {loadIndex, type DataIndex, type DayKey} from './lib/grid'
+import {intakeAt, loadSchoolData, type SchoolData} from './lib/schools'
 import {useClickedRoute} from './lib/useClickedRoute'
 import {useWindowData} from './lib/useWindowData'
 
@@ -32,6 +34,20 @@ function App() {
         })
     }, [index, indexFailed])
 
+    const [schoolData, setSchoolData] = useState<SchoolData | 'loading' | 'error'>('loading')
+    useEffect(() => {
+        if (!index) return
+        loadSchoolData(index.grid).then(setSchoolData, e => {
+            console.error('loading school data', e)
+            setSchoolData('error')
+        })
+    }, [index])
+    const schools: SchoolsState = useMemo(() => {
+        if (!clicked || !index) return null
+        if (typeof schoolData === 'string') return schoolData
+        return intakeAt(schoolData, index.grid, clicked[0], clicked[1]) ?? {primary: null, secondary: null}
+    }, [clicked, index, schoolData])
+
     const onMapClick = useCallback((lat: number, lng: number) => setClicked([lat, lng]), [])
     const close = useCallback(() => setClicked(null), [])
 
@@ -47,7 +63,10 @@ function App() {
                 status={indexFailed ? 'error' : status}
                 onRetry={indexFailed ? () => setIndexFailed(false) : retry}
             >
-                {route && <RoutePanel result={route.result} dayLabel={route.dayLabel} routes={route.routes} stops={route.stops} onClose={close}/>}
+                {route && (
+                    <PropertyReport title={pointTitle(route.point)} route={route} schools={schools}
+                                    asOf={typeof schoolData === 'object' ? schoolData.asOf : null} onClose={close}/>
+                )}
             </ControlCard>
         </main>
     )
