@@ -1,7 +1,8 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {THRESHOLDS, type Band} from './bands'
 import {buildBands} from './contours'
-import {evictGrid, loadGrid, windowKey, type DataIndex, type DayKey, type Grid} from './grid'
+import {windowKey, type DataIndex, type Grid} from './grid'
+import {evictView, loadView, viewKey, type View} from './views'
 
 export type WindowStatus = 'loading' | 'ready' | 'error'
 
@@ -47,10 +48,10 @@ export function computeBandsInWorker(grid: Grid): Promise<Band[]> {
     }).catch(() => buildBands(grid, THRESHOLDS, null))
 }
 
-const DEFAULT_DEPS: WindowDeps = {loadGrid, evictGrid, computeBands: computeBandsInWorker}
+const DEFAULT_DEPS: WindowDeps = {loadGrid: loadView, evictGrid: evictView, computeBands: computeBandsInWorker}
 
-/** Grid + bands for one window. Previous grid/bands stay while the next loads or after an error. */
-export function useWindowData(index: DataIndex | null, day: DayKey, hour: number, deps: WindowDeps = DEFAULT_DEPS) {
+/** Grid + bands for one view (transit window or bike speed). Previous grid/bands stay while the next loads or after an error. */
+export function useWindowData(index: DataIndex | null, view: View, deps: WindowDeps = DEFAULT_DEPS) {
     const [grid, setGrid] = useState<Grid | null>(null)
     const [bands, setBands] = useState<Band[]>([])
     const [status, setStatus] = useState<WindowStatus>('loading')
@@ -60,7 +61,9 @@ export function useWindowData(index: DataIndex | null, day: DayKey, hour: number
     const bandCache = useRef(new Map<string, Band[]>())
     const depsRef = useRef(deps)
     depsRef.current = deps
-    const key = windowKey(day, hour)
+    const key = viewKey(view)
+    const day = view.mode === 'transit' ? view.day : null
+    const hour = view.mode === 'transit' ? view.hour : null
 
     useEffect(() => {
         if (!index) return
@@ -81,8 +84,10 @@ export function useWindowData(index: DataIndex | null, day: DayKey, hour: number
                 setBands(b)
                 setLoadedKey(key)
                 setStatus('ready')
-                for (const h of [hour - 1, hour + 1]) {
-                    if (index.hours.includes(h)) d.loadGrid(index, windowKey(day, h)).catch(() => undefined)
+                if (day !== null && hour !== null) {
+                    for (const h of [hour - 1, hour + 1]) {
+                        if (index.hours.includes(h)) d.loadGrid(index, windowKey(day, h)).catch(() => undefined)
+                    }
                 }
             })
             .catch(e => {
@@ -98,6 +103,6 @@ export function useWindowData(index: DataIndex | null, day: DayKey, hour: number
         setAttempt(a => a + 1)
     }, [key])
 
-    /** loadedKey: window the current grid/bands belong to (lags `day`/`hour` while loading). */
+    /** loadedKey: view the current grid/bands belong to (lags `view` while loading). */
     return {grid, bands, status, retry, loadedKey}
 }

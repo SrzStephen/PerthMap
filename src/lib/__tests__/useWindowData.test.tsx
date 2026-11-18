@@ -3,6 +3,10 @@ import {describe, expect, it, vi} from 'vitest'
 import type {Band} from '../bands'
 import type {DataIndex, Grid} from '../grid'
 import {useWindowData, type WindowDeps} from '../useWindowData'
+import {viewKey, type View} from '../views'
+
+const tv = (hour: number): View => ({mode: 'transit', day: 'weekday', hour})
+const bv = (speed: number): View => ({mode: 'bike', speed})
 
 const INDEX: DataIndex = {
     version: 1, generated: '', grid: {width: 1, height: 1, minLon: 0, minLat: 0, spacing: 1},
@@ -30,7 +34,7 @@ function deps(overrides: Partial<WindowDeps> = {}): WindowDeps {
 describe('useWindowData', () => {
     it('loads then ready', async () => {
         const d = deps()
-        const {result} = renderHook(() => useWindowData(INDEX, 'weekday', 8, d))
+        const {result} = renderHook(() => useWindowData(INDEX, tv(8), d))
         expect(result.current.status).toBe('loading')
         await waitFor(() => expect(result.current.status).toBe('ready'))
         expect(keyOf(result.current.bands)).toBe('weekday-08')
@@ -41,7 +45,7 @@ describe('useWindowData', () => {
     it('keeps previous bands while loading', async () => {
         const next = deferred<Grid>()
         const d = deps({loadGrid: vi.fn(async (_i: DataIndex, key: string) => key === 'weekday-09' ? next.promise : fakeGrid(key))})
-        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, d), {initialProps: {h: 8}})
+        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, tv(h), d), {initialProps: {h: 8}})
         await waitFor(() => expect(result.current.status).toBe('ready'))
         rerender({h: 9})
         expect(result.current.status).toBe('loading')
@@ -54,7 +58,7 @@ describe('useWindowData', () => {
     it('stale window load is ignored', async () => {
         const slow = deferred<Grid>(), fast = deferred<Grid>()
         const d = deps({loadGrid: vi.fn((_i: DataIndex, key: string) => key === 'weekday-08' ? slow.promise : fast.promise)})
-        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, d), {initialProps: {h: 8}})
+        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, tv(h), d), {initialProps: {h: 8}})
         rerender({h: 9})
         await act(async () => fast.resolve(fakeGrid('weekday-09')))
         await waitFor(() => expect(result.current.status).toBe('ready'))
@@ -66,7 +70,7 @@ describe('useWindowData', () => {
     it('does not contour a window superseded before its grid arrived', async () => {
         const slow = deferred<Grid>()
         const d = deps({loadGrid: vi.fn(async (_i: DataIndex, key: string) => key === 'weekday-08' ? slow.promise : fakeGrid(key))})
-        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, d), {initialProps: {h: 8}})
+        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, tv(h), d), {initialProps: {h: 8}})
         rerender({h: 9})
         await waitFor(() => expect(result.current.status).toBe('ready'))
         await act(async () => slow.resolve(fakeGrid('weekday-08')))
@@ -76,7 +80,7 @@ describe('useWindowData', () => {
 
     it('reuses bands for a window already contoured', async () => {
         const d = deps()
-        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, 'weekday', h, d), {initialProps: {h: 8}})
+        const {result, rerender} = renderHook(({h}) => useWindowData(INDEX, tv(h), d), {initialProps: {h: 8}})
         await waitFor(() => expect(result.current.loadedKey).toBe('weekday-08'))
         rerender({h: 9})
         await waitFor(() => expect(result.current.loadedKey).toBe('weekday-09'))
@@ -92,7 +96,7 @@ describe('useWindowData', () => {
             if (fail) throw new Error('boom')
             return fakeGrid(key)
         })})
-        const {result} = renderHook(() => useWindowData(INDEX, 'weekday', 8, d))
+        const {result} = renderHook(() => useWindowData(INDEX, tv(8), d))
         await waitFor(() => expect(result.current.status).toBe('error'))
         fail = false
         act(() => result.current.retry())
@@ -102,7 +106,7 @@ describe('useWindowData', () => {
 
     it('prefetches neighbours', async () => {
         const d = deps()
-        const {result} = renderHook(() => useWindowData(INDEX, 'weekday', 8, d))
+        const {result} = renderHook(() => useWindowData(INDEX, tv(8), d))
         await waitFor(() => expect(result.current.status).toBe('ready'))
         await waitFor(() => {
             const keys = (d.loadGrid as ReturnType<typeof vi.fn>).mock.calls.map(c => c[1])
@@ -110,9 +114,40 @@ describe('useWindowData', () => {
         })
     })
 
+    it('loads a bike view by its key', async () => {
+        const d = deps()
+        const {result} = renderHook(() => useWindowData(INDEX, bv(15), d))
+        await waitFor(() => expect(result.current.loadedKey).toBe('bike@15'))
+        expect(d.loadGrid).toHaveBeenCalledWith(INDEX, 'bike@15')
+    })
+
+    it('switching speed mid-load shows only the latest', async () => {
+        const s15 = deferred<Grid>(), s25 = deferred<Grid>()
+        const d = deps({loadGrid: vi.fn((_i: DataIndex, key: string) => key === 'bike@15' ? s15.promise : s25.promise)})
+        const {result, rerender} = renderHook(({v}) => useWindowData(INDEX, v, d), {initialProps: {v: bv(15)}})
+        rerender({v: bv(25)})
+        await act(async () => s25.resolve(fakeGrid('bike@25')))
+        await act(async () => s15.resolve(fakeGrid('bike@15')))
+        await waitFor(() => expect(result.current.status).toBe('ready'))
+        expect(result.current.loadedKey).toBe('bike@25')
+        expect(d.computeBands).toHaveBeenCalledTimes(1)
+    })
+
+    it('no hour prefetch in bike mode', async () => {
+        const d = deps()
+        const {result} = renderHook(() => useWindowData(INDEX, bv(15), d))
+        await waitFor(() => expect(result.current.status).toBe('ready'))
+        expect((d.loadGrid as ReturnType<typeof vi.fn>).mock.calls.map(c => c[1])).toEqual(['bike@15'])
+    })
+
+    it('view keys', () => {
+        expect(viewKey(tv(8))).toBe('weekday-08')
+        expect(viewKey(bv(25))).toBe('bike@25')
+    })
+
     it('waits for the index', () => {
         const d = deps()
-        const {result} = renderHook(() => useWindowData(null, 'weekday', 8, d))
+        const {result} = renderHook(() => useWindowData(null, tv(8), d))
         expect(result.current.status).toBe('loading')
         expect(d.loadGrid).not.toHaveBeenCalled()
     })

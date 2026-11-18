@@ -18,7 +18,7 @@ function App() {
     const [minutes, setMinutes] = useState(45)
     const [day, setDay] = useState<DayKey>('weekday')
     const [hour, setHour] = useState(8)
-    const {grid, bands, status, retry, loadedKey} = useWindowData(index, day, hour)
+    const {grid, bands, status, retry, loadedKey} = useWindowData(index, {mode: 'transit', day, hour})
     const [clicked, setClicked] = useState<[number, number] | null>(null)
     const days = useMemo(() => index?.days ?? DEFAULT_DAYS, [index])
     // resolved against the window on screen; null while a newer window or click is still resolving
