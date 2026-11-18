@@ -1,6 +1,9 @@
 /** Band times the palette is scaled over (10–85 in 5-min steps). */
 export const TIMES: number[] = Array.from({length: 16}, (_, i) => 10 + i * 5)
 
+/** Band thresholds contoured from the grid: "under t minutes" for 15…85 in 5-min steps. */
+export const THRESHOLDS: number[] = Array.from({length: 15}, (_, i) => 15 + i * 5)
+
 export interface Band {
     time: number
     /** Polygons (outer ring then holes), each ring as [lat, lng] pairs. */
