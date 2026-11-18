@@ -46,6 +46,7 @@ function App() {
                 hours={index?.hours ?? DEFAULT_HOURS} hour={hour} onHourChange={setHour}
                 status={indexFailed ? 'error' : status}
                 onRetry={indexFailed ? () => setIndexFailed(false) : retry}
+                mode="transit" onModeChange={() => undefined} bikeAvailable={false} speed={15} onSpeedChange={() => undefined}
             >
                 {route && <RoutePanel result={route.result} dayLabel={route.dayLabel} routes={route.routes} stops={route.stops} onClose={close}/>}
             </ControlCard>

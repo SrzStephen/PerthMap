@@ -21,6 +21,7 @@ function card(props: Partial<ComponentProps<typeof ControlCard>> = {}) {
         days: DAYS, day: 'weekday', onDayChange: vi.fn(),
         hours: HOURS, hour: 8, onHourChange: vi.fn(),
         status: 'ready', onRetry: vi.fn(),
+        mode: 'transit', onModeChange: vi.fn(), bikeAvailable: false, speed: 15, onSpeedChange: vi.fn(),
         ...props,
     }
     render(<ControlCard {...all}/>)
@@ -85,6 +86,7 @@ describe('ControlCard', () => {
         render(<ControlCard {...{
             times: THRESHOLDS, minutes: 45, onMinutesChange: vi.fn(), days: DAYS, day: 'weekday', onDayChange: vi.fn(),
             hours: HOURS, hour: 8, onHourChange: vi.fn(), status: 'ready', onRetry: vi.fn(),
+            mode: 'transit', onModeChange: vi.fn(), bikeAvailable: false, speed: 15, onSpeedChange: vi.fn(),
         }}><p>route here</p></ControlCard>)
         expect(screen.getByText('route here')).toBeInTheDocument()
         expect(screen.queryByRole('slider', {name: 'Maximum travel time in minutes'})).toBeNull()
@@ -108,5 +110,37 @@ describe('ControlCard', () => {
         await userEvent.click(expand)
         expect(screen.getAllByRole('slider')).toHaveLength(2)
         expect(screen.getByRole('region', {name: 'Map controls'})).toHaveAttribute('data-sheet', 'expanded')
+    })
+
+    describe('bike', () => {
+        it('has no mode toggle without bike data', () => {
+            card()
+            expect(screen.queryByRole('radiogroup', {name: 'Mode'})).not.toBeInTheDocument()
+        })
+
+        it('switches mode', async () => {
+            const p = card({bikeAvailable: true})
+            expect(screen.getByRole('radio', {name: 'Transit'})).toHaveAttribute('aria-checked', 'true')
+            await userEvent.click(screen.getByRole('radio', {name: 'Bike'}))
+            expect(p.onModeChange).toHaveBeenCalledWith('bike')
+        })
+
+        it('shows speeds instead of day and hour', async () => {
+            const p = card({bikeAvailable: true, mode: 'bike'})
+            expect(screen.queryByRole('slider', {name: 'Arrival hour'})).not.toBeInTheDocument()
+            expect(screen.queryByRole('radiogroup', {name: 'Day'})).not.toBeInTheDocument()
+            const speeds = screen.getByRole('radiogroup', {name: 'Speed'})
+            expect(speeds).toHaveTextContent('12 km/h15 km/h20 km/h25 km/h')
+            expect(screen.getByRole('radio', {name: '15 km/h'})).toHaveAttribute('aria-checked', 'true')
+            expect(screen.getByText('leisurely · commuter · fit · e-bike')).toBeInTheDocument()
+            expect(screen.getByText('Bike time to Perth CBD')).toBeInTheDocument()
+            await userEvent.click(screen.getByRole('radio', {name: '25 km/h'}))
+            expect(p.onSpeedChange).toHaveBeenCalledWith(25)
+        })
+
+        it('bike load error', () => {
+            card({bikeAvailable: true, mode: 'bike', status: 'error'})
+            expect(screen.getByText("Couldn't load bike data")).toBeInTheDocument()
+        })
     })
 })

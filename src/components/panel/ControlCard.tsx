@@ -3,6 +3,7 @@ import {ChevronDown, ChevronUp, LoaderCircle} from 'lucide-react'
 import {Slider} from '../ui/slider'
 import {Legend} from './Legend'
 import {DayToggle} from './DayToggle'
+import {Segmented} from './Segmented'
 import {useIsMobile} from '../../hooks/use-mobile'
 import {cn} from '../../lib/utils'
 import type {DataIndex, DayKey} from '../../lib/grid'
@@ -21,9 +22,22 @@ interface ControlCardProps {
     onHourChange: (hour: number) => void
     status: WindowStatus
     onRetry: () => void
+    mode: Mode
+    onModeChange: (mode: Mode) => void
+    /** index.json has bike data; otherwise there is no mode toggle. */
+    bikeAvailable: boolean
+    speed: number
+    onSpeedChange: (speed: number) => void
     /** Route panel; replaces the minutes slider and legend while present. */
     children?: ReactNode
 }
+
+export type Mode = 'transit' | 'bike'
+
+export const SPEEDS = [12, 15, 20, 25] as const
+export const SPEED_NOTE = 'leisurely · commuter · fit · e-bike'
+const MODES: { value: Mode; label: string }[] = [{value: 'transit', label: 'Transit'}, {value: 'bike', label: 'Bike'}]
+const SPEED_OPTIONS = SPEEDS.map(v => ({value: v as number, label: `${v} km/h`}))
 
 const pad = (h: number) => String(h).padStart(2, '0')
 const hourLabel = (h: number) => `Arrive ${pad(h)}:00–${pad(h + 1)}:00`
@@ -37,6 +51,8 @@ const Value = ({minutes, size}: { minutes: number; size: 'lg' | 'sm' }) => (
 
 export function ControlCard(props: ControlCardProps) {
     const {times, minutes, onMinutesChange, days, day, onDayChange, hours, hour, onHourChange, status, onRetry, children} = props
+    const {mode, onModeChange, bikeAvailable, speed, onSpeedChange} = props
+    const bike = mode === 'bike'
     const isMobile = useIsMobile()
     const [expanded, setExpanded] = useState(true)
     const open = !isMobile || expanded
@@ -59,7 +75,7 @@ export function ControlCard(props: ControlCardProps) {
                             <LoaderCircle role="status" aria-label="Loading" size={14} className="animate-spin text-[var(--muted)]"/>
                         )}
                     </h1>
-                    {open && <p className="text-sm text-[var(--muted)]">Public transport time to Perth CBD</p>}
+                    {open && <p className="text-sm text-[var(--muted)]">{bike ? 'Bike time to Perth CBD' : 'Public transport time to Perth CBD'}</p>}
                 </div>
                 {isMobile && (
                     <div className="flex items-center gap-2">
@@ -80,22 +96,32 @@ export function ControlCard(props: ControlCardProps) {
             {open && (
                 <>
                     <div className="mt-4 space-y-3">
-                        <DayToggle days={days} day={day} onDayChange={onDayChange}/>
-                        <div>
-                            <p className="text-xs font-medium text-[var(--muted)]">{hourLabel(hour)}</p>
-                            <Slider
-                                className="mt-2"
-                                value={[hour]}
-                                min={hours[0]}
-                                max={hours[hours.length - 1]}
-                                step={1}
-                                onValueChange={([v]) => onHourChange(v)}
-                                aria-label="Arrival hour"
-                            />
-                        </div>
+                        {bikeAvailable && <Segmented label="Mode" options={MODES} value={mode} onChange={onModeChange}/>}
+                        {bike ? (
+                            <div>
+                                <Segmented label="Speed" options={SPEED_OPTIONS} value={speed} onChange={onSpeedChange}/>
+                                <p className="mt-1 text-center text-[11px] text-[var(--muted)]">{SPEED_NOTE}</p>
+                            </div>
+                        ) : (
+                            <>
+                                <DayToggle days={days} day={day} onDayChange={onDayChange}/>
+                                <div>
+                                    <p className="text-xs font-medium text-[var(--muted)]">{hourLabel(hour)}</p>
+                                    <Slider
+                                        className="mt-2"
+                                        value={[hour]}
+                                        min={hours[0]}
+                                        max={hours[hours.length - 1]}
+                                        step={1}
+                                        onValueChange={([v]) => onHourChange(v)}
+                                        aria-label="Arrival hour"
+                                    />
+                                </div>
+                            </>
+                        )}
                         {status === 'error' && (
                             <p className="flex items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800">
-                                {`Couldn't load ${dayLabel} ${pad(hour)}:00 data`}
+                                {bike ? "Couldn't load bike data" : `Couldn't load ${dayLabel} ${pad(hour)}:00 data`}
                                 <button type="button" onClick={onRetry} className="font-semibold underline">Retry</button>
                             </p>
                         )}
