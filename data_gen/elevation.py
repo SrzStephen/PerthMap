@@ -42,15 +42,25 @@ def fill_voids(h: np.ndarray) -> np.ndarray:
     return h
 
 
-def median_filter(h: np.ndarray, size: int = 5, rows_per_chunk: int = 256) -> np.ndarray:
-    """size x size moving median with edge padding (chunked by rows to bound memory)."""
+def _window(h: np.ndarray, size: int, reduce, rows_per_chunk: int = 256) -> np.ndarray:
+    """size x size moving `reduce` with edge padding (chunked by rows to bound memory)."""
     r = size // 2
     padded = np.pad(h, r, mode="edge")
     out = np.empty(h.shape, dtype=float)
     for y in range(0, h.shape[0], rows_per_chunk):
         block = padded[y:y + rows_per_chunk + 2 * r]
-        out[y:y + rows_per_chunk] = np.median(sliding_window_view(block, (size, size)), axis=(2, 3))
+        out[y:y + rows_per_chunk] = reduce(sliding_window_view(block, (size, size)), axis=(2, 3))
     return out
+
+
+def median_filter(h: np.ndarray, size: int = 5) -> np.ndarray:
+    return _window(h, size, np.median)
+
+
+def opening(h: np.ndarray, size: int = 9) -> np.ndarray:
+    """Grey-scale opening (min then max filter): removes raised objects narrower than the window - CBD towers,
+    stands of trees - and keeps wider landforms, turning SRTM's surface heights into ground heights."""
+    return _window(_window(h, size, np.min), size, np.max)
 
 
 class Dem:
@@ -62,7 +72,7 @@ class Dem:
 
     @classmethod
     def from_tiles(cls, paths: list[Path], bbox: BBox) -> "Dem":
-        """Mosaic of the tiles cropped to `bbox`, voids filled, 5x5 median filtered."""
+        """Mosaic of the tiles cropped to `bbox`: voids filled, 9x9 opening (ground, not roofs), 5x5 median."""
         tiles = []
         for p in paths:
             raw = np.fromfile(p, dtype=">i2")
@@ -84,7 +94,7 @@ class Dem:
         i1 = min(rows, math.ceil((north - bbox.min_lat) / step) + 1)
         j0 = max(0, math.floor((bbox.min_lon - west) / step))
         j1 = min(cols, math.ceil((bbox.max_lon - west) / step) + 1)
-        crop = median_filter(fill_voids(mosaic[i0:i1, j0:j1]))
+        crop = median_filter(opening(fill_voids(mosaic[i0:i1, j0:j1])))
         return cls(crop, north - i0 * step, west + j0 * step, step)
 
     def sample(self, lat: np.ndarray, lon: np.ndarray) -> np.ndarray:

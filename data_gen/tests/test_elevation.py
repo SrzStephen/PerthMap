@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from elevation import Dem, VOID, along, climb, fill_voids, interpolate_water, median_filter, sample_positions
+from elevation import Dem, VOID, along, climb, fill_voids, interpolate_water, median_filter, opening, sample_positions
 from pipeline import BBox
 
 
@@ -17,9 +17,10 @@ def write_hgt(path, rows):
 
 
 def test_tile_seam_continuous(tmp_path):
-    # 3x3 tiles, 0.5 deg step; heights rise 10 m per row southwards, shared edge row at lat -32 = 20
-    write_hgt(tmp_path / "S32E115.hgt", [[0, 0, 0], [10, 10, 10], [20, 20, 20]])
-    write_hgt(tmp_path / "S33E115.hgt", [[20, 20, 20], [30, 30, 30], [40, 40, 40]])
+    # 21x21 tiles (0.05 deg step; larger than the filters), heights rise 1 m per row southwards, so the shared
+    # edge row at lat -32 is 20 in both tiles; a linear slope passes the opening and median unchanged
+    write_hgt(tmp_path / "S32E115.hgt", [[i] * 21 for i in range(21)])
+    write_hgt(tmp_path / "S33E115.hgt", [[20 + i] * 21 for i in range(21)])
     dem = Dem.from_tiles([tmp_path / "S32E115.hgt", tmp_path / "S33E115.hgt"], BBox(115.0, -33.0, 116.0, -31.0))
     lon = np.array([115.5, 115.5])
     north, south = dem.sample(np.array([-32.0 + 1e-9, -32.0 - 1e-9]), lon)
@@ -38,6 +39,15 @@ def test_median_removes_spike():
     h = np.full((7, 7), 5.0)
     h[3, 3] = 60
     assert np.all(median_filter(h, 5) == 5)
+
+
+def test_opening_removes_towers_keeps_hills():
+    h = np.full((30, 30), 10.0)
+    h[5:8, 5:8] = 60  # a ~90 m block of towers
+    h[15:30, 15:30] = 40  # a hill wider than the window
+    out = opening(h, 9)
+    assert out[6, 6] == 10
+    assert out[22, 22] == 40
 
 
 def test_sample_positions():
