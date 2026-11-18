@@ -1,10 +1,15 @@
+import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 import requests
+from shapely.geometry import box, shape
 
 import schools
-from pipeline import BBox
+from pipeline import BBox, GridMeta, grid_meta
+
+FIX = Path(__file__).parent / "fixtures"
 
 BB = BBox(115.0, -33.0, 116.0, -31.0)
 
@@ -67,6 +72,54 @@ def test_download_skips_cached_and_non_pdf(tmp_path: Path):
     assert got == {"A": [tmp_path / "A_1.pdf"], "B": [tmp_path / "B_2.pdf"]}
     assert len(s.calls) == 2  # only B's two maps were requested
     assert not (tmp_path / "B_1.pdf").exists()
+
+
+TOY = GridMeta(20, 20, 0.0, 0.0, 0.001)
+
+
+def test_intake_bin_roundtrip():
+    p = np.arange(400, dtype=np.uint16)
+    s = np.full(400, schools.NO_SCHOOL, dtype=np.uint16)
+    s[7] = 3
+    gp, gs = schools.decode_intake(schools.encode_intake(p, s, TOY))
+    assert (gp == p).all() and (gs == s).all()
+
+
+def test_rasterise_square():
+    plane, overlaps = schools.rasterise(TOY, [(4, box(-0.0005, -0.0005, 0.0095, 0.0095))])
+    assert (plane == 4).sum() == 100
+    assert (plane == schools.NO_SCHOOL).sum() == 300
+    assert plane[0] == 4 and plane[9 * 20 + 9] == 4 and plane[10] == schools.NO_SCHOOL
+    assert overlaps == {}
+
+
+def test_rasterise_overlap_counts():
+    a = box(-0.0005, -0.0005, 0.0045, 0.0095)  # columns 0-4
+    b = box(0.0035, -0.0005, 0.0095, 0.0095)   # columns 4-9: column 4 shared, 10 cells
+    plane, overlaps = schools.rasterise(TOY, [(1, a), (2, b)])
+    assert plane[4] == 1  # first claim wins
+    assert overlaps == {1: 10, 2: 10}
+
+
+def test_stage_writes_outputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    poc = shape(json.loads((FIX / "intake_5464.geojson").read_text())["features"][0]["geometry"])
+    pt = poc.representative_point()
+    wembley = schools.School("5464", "Wembley Primary School", True, False, pt.y, pt.x)
+    monkeypatch.setattr(schools, "fetch_schools", lambda bbox: [wembley])
+    monkeypatch.setattr(schools, "download_maps", lambda codes, dest, workers: {"5464": [FIX / "intake_5464.pdf"]})
+    web, results = tmp_path / "web", tmp_path
+    meta = grid_meta(0.001)
+    schools.build(web, results, tmp_path / "cache", meta, workers=1)
+
+    sj = json.loads((web / "schools.json").read_text())
+    assert sj["schools"] == [["5464", "Wembley Primary School", "P", pt.y, pt.x, True]]
+    fc = json.loads((web / "intake.json").read_text())
+    assert {f["properties"]["kind"] for f in fc["features"]} == {"main"}
+    primary, secondary = schools.decode_intake((web / "intake.bin").read_bytes())
+    assert 160 < (primary == 0).sum() < 220  # ~2.0 km² at ~0.0105 km² (94 m x 111 m) per 0.001° cell
+    assert (secondary == schools.NO_SCHOOL).all()
+    qa = (results / "intake_qa.csv").read_text().splitlines()
+    assert qa[0] == "code,name,maps,rings,main_found,area_km2,overlaps" and qa[1].startswith("5464,")
 
 
 def test_download_retries_5xx(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

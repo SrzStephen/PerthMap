@@ -849,6 +849,13 @@ def main() -> None:
     sp.add_argument("--workers", type=int, default=os.cpu_count() or 8)
     sp.set_defaults(fn=route)
 
+    from schools import schools_stage  # imports this module, so not at the top
+
+    sp = sub.add_parser("schools", help="public schools and their local intake areas")
+    sp.add_argument("--force", action="store_true", help="re-check maps an earlier run found missing")
+    sp.add_argument("--workers", type=int, default=8, help="parallel intake-map downloads")
+    sp.set_defaults(fn=schools_stage)
+
     args = p.parse_args()
     args.fn(args)
 

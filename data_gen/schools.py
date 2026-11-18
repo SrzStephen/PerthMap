@@ -1,15 +1,27 @@
 """Public schools (DET-024) and their local intake areas (Department of Education WA intake-map GeoPDFs)."""
 from __future__ import annotations
 
+import argparse
+import csv
+import gzip
+import json
+import struct
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
+import numpy as np
 import requests
+import shapely
+from pyproj import Transformer
+from shapely.geometry import Polygon, mapping
+from shapely.ops import transform
 
-from pipeline import BBox, log
+import intake
+from pipeline import GRID_BBOX, INPUT, RESULTS, WEB, BBox, GridMeta, grid_meta, log, write_json
 
 SLIP_SCHOOLS = ("https://public-services.slip.wa.gov.au/public/rest/services/SLIP_Public_Services/"
                 "Education/MapServer/13/query")
@@ -110,3 +122,121 @@ def download_maps(codes: list[str], dest: Path, workers: int = 8, session=None) 
             out.setdefault(code, []).append(path)
     log(f"intake maps: {sum(len(v) for v in out.values())} PDFs for {len(out)}/{len(codes)} schools")
     return out
+
+
+INTAKE_MAGIC, INTAKE_VERSION = b"PMI1", 1
+NO_SCHOOL = 0xFFFF
+SIMPLIFY_M = 5
+SOURCE = ("Local intake areas © Department of Education WA, CC BY 4.0, derived from DoE intake maps; "
+          "school locations DET-024, CC BY-NC 4.0")
+_TO_M = Transformer.from_crs("EPSG:4326", "EPSG:7850", always_xy=True)
+_FROM_M = Transformer.from_crs("EPSG:7850", "EPSG:4326", always_xy=True)
+
+
+def encode_intake(primary: np.ndarray, secondary: np.ndarray, meta: GridMeta) -> bytes:
+    header = struct.pack("<4sHII", INTAKE_MAGIC, INTAKE_VERSION, meta.width, meta.height)
+    return gzip.compress(header + primary.astype("<u2").tobytes() + secondary.astype("<u2").tobytes(), 9)
+
+
+def decode_intake(b: bytes) -> tuple[np.ndarray, np.ndarray]:
+    raw = gzip.decompress(b)
+    magic, version, w, h = struct.unpack_from("<4sHII", raw)
+    if magic != INTAKE_MAGIC or version != INTAKE_VERSION:
+        raise ValueError("intake format")
+    n, off = w * h, struct.calcsize("<4sHII")
+    planes = np.frombuffer(raw, dtype="<u2", count=2 * n, offset=off)
+    return planes[:n].copy(), planes[n:].copy()
+
+
+def rasterise(meta: GridMeta, polys: list[tuple[int, Polygon]]) -> tuple[np.ndarray, dict[int, int]]:
+    """School index per lattice point inside its polygon; first claim wins. Also cells each school shares."""
+    xs = meta.min_lon + np.arange(meta.width) * meta.spacing
+    ys = meta.min_lat + np.arange(meta.height) * meta.spacing
+    plane = np.full(meta.width * meta.height, NO_SCHOOL, dtype=np.uint16)
+    overlaps: dict[int, int] = {}
+    for i, poly in polys:
+        x0, y0, x1, y1 = poly.bounds
+        cx = np.nonzero((xs >= x0) & (xs <= x1))[0]
+        cy = np.nonzero((ys >= y0) & (ys <= y1))[0]
+        if not len(cx) or not len(cy):
+            continue
+        gx, gy = np.meshgrid(cx, cy)
+        inside = shapely.contains_xy(poly, xs[gx], ys[gy])
+        cells = (gy * meta.width + gx)[inside]
+        taken = plane[cells] != NO_SCHOOL
+        for other, n in zip(*np.unique(plane[cells][taken], return_counts=True)):
+            overlaps[int(other)] = overlaps.get(int(other), 0) + int(n)
+            overlaps[i] = overlaps.get(i, 0) + int(n)
+        plane[cells[~taken]] = i
+    return plane, overlaps
+
+
+def _simplified(poly: Polygon) -> dict:
+    m = transform(_TO_M.transform, poly).simplify(SIMPLIFY_M, preserve_topology=True)
+    geom = mapping(transform(_FROM_M.transform, m))
+    return json.loads(json.dumps(geom), parse_float=lambda v: round(float(v), 5))
+
+
+def _feature(i: int, kind: str, poly: Polygon) -> dict:
+    return {"type": "Feature", "properties": {"i": i, "kind": kind}, "geometry": _simplified(poly)}
+
+
+def build(web: Path, results: Path, cache: Path, meta: GridMeta, workers: int = 8) -> None:
+    found = fetch_schools(GRID_BBOX)
+    log(f"{len(found)} public schools in the mapped area")
+    maps = download_maps([s.code for s in found], cache, workers=workers)
+    features, qa, has_intake = [], [], []
+    by_level: dict[str, list[tuple[int, Polygon]]] = {"P": [], "S": []}
+    for i, s in enumerate(found):
+        rings, main, optional = [], None, []
+        for pdf in maps.get(s.code, []):
+            try:
+                rings += intake.boundary_rings(pdf)
+            except Exception as e:  # a damaged or non-Geo PDF: this school just has no area
+                log(f"  {s.code} {pdf.name}: {e}")
+        if rings:
+            main, optional = intake.select_intake(rings, (s.lon, s.lat))
+        has_intake.append(main is not None)
+        if main is not None:
+            features += [_feature(i, "main", main)] + [_feature(i, "optional", o) for o in optional]
+            if s.primary:
+                by_level["P"].append((i, main))
+            if s.secondary:
+                by_level["S"].append((i, main))
+        area = round(transform(_TO_M.transform, main).area / 1e6, 3) if main is not None else ""
+        qa.append([s.code, s.name, len(maps.get(s.code, [])), len(rings), main is not None, area])
+    primary, p_over = rasterise(meta, by_level["P"])
+    secondary, s_over = rasterise(meta, by_level["S"])
+
+    web.mkdir(parents=True, exist_ok=True)
+    levels = lambda s: ("P" if s.primary else "") + ("S" if s.secondary else "")
+    write_json(web / "schools.json", {"asOf": date.today().isoformat(), "source": SOURCE, "schools": [
+        [s.code, s.name, levels(s), s.lat, s.lon, has] for s, has in zip(found, has_intake)]})
+    write_json(web / "intake.json", {"type": "FeatureCollection", "features": features})
+    # gzipped, but not named .gz: dev/static servers add Content-Encoding: gzip from the extension
+    (web / "intake.bin").write_bytes(encode_intake(primary, secondary, meta))
+    with open(results / "intake_qa.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["code", "name", "maps", "rings", "main_found", "area_km2", "overlaps"])
+        for i, row in enumerate(qa):
+            w.writerow(row + [p_over.get(i, 0) + s_over.get(i, 0)])
+    overlapping = sum(1 for i in range(len(found)) if p_over.get(i) or s_over.get(i))
+    log(f"intake: {sum(has_intake)}/{len(found)} schools with an area, {overlapping} overlapping (intake_qa.csv)")
+
+
+def web_grid_meta() -> GridMeta:
+    """The travel-time grid the web app already uses, so intake cells line up with it."""
+    index = WEB / "index.json"
+    if index.exists():
+        g = json.loads(index.read_text())["grid"]
+        return GridMeta(g["width"], g["height"], g["minLon"], g["minLat"], g["spacing"])
+    return grid_meta(0.001)
+
+
+def schools_stage(args: argparse.Namespace) -> None:
+    cache = INPUT / "intake"
+    if args.force:
+        for p in cache.glob("*.none"):
+            p.unlink()
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    build(WEB, RESULTS, cache, web_grid_meta(), workers=args.workers)

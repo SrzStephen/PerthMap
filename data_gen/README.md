@@ -17,6 +17,7 @@ docker compose down
 | `motis-import` | `ghcr.io/motis-project/motis` | Builds the street + timetable index in `data/motis/index` |
 | `motis` | `ghcr.io/motis-project/motis` | Serves the API (and a web UI at http://localhost:8080 for spot checks) |
 | `route` | pipeline | Travel times and fastest routes for every window → `data/results/web/` |
+| `schools` | pipeline | Public schools (DET-024) and their local intake areas from the Department of Education's intake-map GeoPDFs → `data/results/web/` (run after `route`, so it reuses its grid). `docker compose run --rm --no-deps route schools` |
 
 Drop an existing `australia-latest.osm.pbf` into `data/input/` to skip the ~900 MB download.
 
@@ -47,7 +48,20 @@ Rather than planning one journey per grid point, `route` does:
 | `{day}-{HH}.grid.bin` | gzip of `"PMG1"`, `u16` version, `u32` width, `u32` height (little-endian), then per cell: median, fastest, sample, walk minutes (`u8`, 255 = n/a) and stop number (`u16`, `0xFFFF` none, `0xFFFE` walk directly). Row 0 is the south edge. |
 | `{day}-{HH}.routes.json` | `{samples, lines, shapes, trips}`: `lines` = `[mode, line, headsign]`; `shapes` = encoded polylines (precision 5, ~5 m simplified) shared by legs; `trips["<stop>:<sample>"]` = `[depart, arrive, legs]` with times in minutes since midnight (Perth) and each leg `[line, from stop, to stop, depart, arrive, shape, i0, i1]` (stop `-1` = not a GTFS stop; geometry = shape vertices `i0..i1`) |
 
+| `schools.json` | `{asOf, source, schools: [[code, name, levels, lat, lon, hasIntake], …]}`, `levels` = `P`, `S` or `PS` (K–12); the index is the school number |
+| `intake.json` | GeoJSON of intake areas, properties `{i: school number, kind: "main" \| "optional"}` (optional/conditional areas are hatched on the DoE maps); ~5 m simplified |
+| `intake.bin` | gzip of `"PMI1"`, `u16` version, `u32` width, `u32` height, then two `u16` planes over the travel-time grid: primary and secondary school number whose main intake area holds the cell (`0xFFFF` none) |
+
 The run warns when more than 5 % of cells' planned trip differs from the grid time by over 5 minutes.
+
+### Intake areas
+Each school's `INTAKE_MAP01`/`02` PDF is downloaded once (8 in parallel) into `data/input/intake/`; a missing map is
+remembered as `<code>_<n>.none` (`schools --force` re-checks those). The maps are Esri GeoPDFs: four control points
+georeference the page and the boundary is a vector path, so no tracing is needed. A school's main area is the
+smallest ring holding the school; rings hatched with a clip are optional areas; other rings are neighbouring schools'.
+`data/results/intake_qa.csv` lists schools with no map or no main ring and cells claimed by two schools (the lower
+school number wins). The areas are approximate: the legal boundary is the Government Gazette text.
+Local intake areas © Department of Education WA, CC BY 4.0. The UBD basemap inside the PDFs is never used.
 
 ### Accuracy guards
 - **Walkable grid only.** Grid points further than `--walkable-within` (75 m) from a walkable OSM way are dropped
