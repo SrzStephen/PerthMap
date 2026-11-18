@@ -62,6 +62,23 @@ def test_select_intake_hatched_is_optional_plain_neighbour_dropped():
     assert [o.equals(annex) for o in optional] == [True]
 
 
+def test_select_intake_far_scrap_is_none():
+    # Swan View PS (5428): the only plain ring is a 1.6 km x 90 m scrap ~1.5 km from the school.
+    scrap = box(115.81, -31.95, 115.826, -31.9492)
+    assert intake.select_intake([intake.Ring(scrap)], (115.80, -31.95)) == (None, [])
+
+
+def test_select_intake_near_ring_still_used():
+    # a school just outside its own drawn area (e.g. across the boundary road) keeps it
+    area = box(115.801, -31.96, 115.82, -31.94)  # ~95 m east of the school, ~4 km²
+    main, _ = intake.select_intake([intake.Ring(area)], (115.80, -31.95))
+    assert main is not None and main.equals(area)
+
+
+def test_rings_carry_their_level_from_the_layer():
+    assert {r.level for r in intake.boundary_rings(PDF)} == {"P"}  # LocalIntakeAreas_PS
+
+
 def test_select_intake_none_when_far():
     main, optional = intake.select_intake([intake.Ring(box(1, 1, 1.01, 1.01))], (0.0, 0.0))
     assert main is None and optional == []

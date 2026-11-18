@@ -25,13 +25,20 @@ MGA50 = "EPSG:28350"  # GDA94 / MGA zone 50, as the maps declare
 _TO_MGA = Transformer.from_crs("EPSG:4326", MGA50, always_xy=True)
 _FROM_MGA = Transformer.from_crs(MGA50, "EPSG:4326", always_xy=True)
 _TO_M = Transformer.from_crs("EPSG:4326", "EPSG:7850", always_xy=True)
-NEAR_M = 2000  # a school outside every ring still owns the nearest ring within this distance
+NEAR_M = 250  # a school just outside every ring (e.g. across the boundary road) owns the nearest ring this close
+NEAR_MIN_KM2 = 0.3  # ...if it is a real area, not a scrap of boundary
 
 
 @dataclass
 class Ring:
     poly: Polygon  # lon, lat
     hatched: bool = False
+    level: str | None = None  # "P" / "S" from the layer name (LocalIntakeAreas_PS / _HS)
+
+
+def _level(layer: str) -> str | None:
+    layer = layer.upper()
+    return "P" if layer.endswith("_PS") else "S" if layer.endswith("_HS") else None
 
 
 def _floats(s: str) -> list[float]:
@@ -140,7 +147,8 @@ def boundary_rings(pdf: Path) -> list[Ring]:
             poly = Polygon([f(x, y) for x, y in pts]).buffer(0)
             if poly.is_empty:
                 continue
-            rings.extend(Ring(p, hatched) for p in (poly.geoms if poly.geom_type == "MultiPolygon" else [poly]))
+            level = _level(dr.get("layer") or "")
+            rings.extend(Ring(p, hatched, level) for p in (poly.geoms if poly.geom_type == "MultiPolygon" else [poly]))
     return rings
 
 
@@ -190,7 +198,8 @@ def select_intake(rings: list[Ring], school: tuple[float, float]) -> tuple[Polyg
         main = min(containing, key=lambda p: p.area)
     else:
         pm = transform(_TO_M.transform, pt)
-        near = [(transform(_TO_M.transform, p).distance(pm), i) for i, p in enumerate(plain)]
+        metric = [transform(_TO_M.transform, p) for p in plain]
+        near = [(m.distance(pm), i) for i, m in enumerate(metric) if m.area / 1e6 >= NEAR_MIN_KM2]
         near = [(d, i) for d, i in near if d <= NEAR_M]
         if not near:
             return None, []

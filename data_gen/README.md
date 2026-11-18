@@ -58,7 +58,11 @@ The run warns when more than 5 % of cells' planned trip differs from the grid ti
 Each school's `INTAKE_MAP01`/`02` PDF is downloaded once (8 in parallel) into `data/input/intake/`; a missing map is
 remembered as `<code>_<n>.none` (`schools --force` re-checks those). The maps are Esri GeoPDFs: four control points
 georeference the page and the boundary is a vector path, so no tracing is needed. A school's main area is the
-smallest ring holding the school; rings hatched with a clip are optional areas; other rings are neighbouring schools'.
+smallest ring holding the school (or a ring of at least 0.3 km² within 250 m, for a school across its boundary road;
+`school_inside = False` in the QA file); rings hatched with a clip are optional areas; other rings are neighbouring
+schools'. Each map is read on its own: its layer (`LocalIntakeAreas_PS` / `_HS`) says which level it is, so a K–12
+school gets separate primary and secondary areas. Intake areas with a neighbour's area inside them are drawn without
+the hole; the per-cell grid is still right because the smaller area wins.
 Older ArcMap exports have the boundary only in the image; for those the region enclosed by boundary-blue pixels
 around the school is traced instead (`method = raster`; main area only). `data/results/intake_qa.csv` lists schools
 with no map or no main ring and cells claimed by two schools (the smaller area wins: typically a newer school's area

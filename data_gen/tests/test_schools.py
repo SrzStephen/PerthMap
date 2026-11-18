@@ -114,6 +114,28 @@ def test_rasterise_smaller_area_wins_overlap():
     assert plane[0] == 2 and plane[9] == 1
 
 
+def test_k12_levels_come_from_their_own_maps():
+    # Cannington Community College (4169): map 1 primary 5.4 km², map 2 secondary 25 km², both hold the school
+    small, big = box(0, 0, 1, 1), box(0, 0, 5, 5)
+    k12 = schools.School("4169", "Cannington Community College", True, True, 0.5, 0.5)
+    got = schools.level_areas(k12, [("P", small, []), ("S", big, [])])
+    assert got["P"][0].equals(small) and got["S"][0].equals(big)
+
+
+def test_level_areas_fall_back_to_map_order_without_layer_names():
+    small, big = box(0, 0, 1, 1), box(0, 0, 5, 5)
+    k12 = schools.School("1", "K-12", True, True, 0.5, 0.5)
+    got = schools.level_areas(k12, [(None, small, []), (None, big, [])])
+    assert got["P"][0].equals(small) and got["S"][0].equals(big)
+
+
+def test_level_areas_single_level_school_takes_any_map():
+    a = box(0, 0, 1, 1)
+    sec = schools.School("2", "High", False, True, 0.5, 0.5)
+    got = schools.level_areas(sec, [("P", None, []), (None, a, [])])
+    assert set(got) == {"S"} and got["S"][0].equals(a)
+
+
 def test_stage_writes_outputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     poc = shape(json.loads((FIX / "intake_5464.geojson").read_text())["features"][0]["geometry"])
     pt = poc.representative_point()
@@ -132,8 +154,8 @@ def test_stage_writes_outputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert 160 < (primary == 0).sum() < 220  # ~2.0 km² at ~0.0105 km² (94 m x 111 m) per 0.001° cell
     assert (secondary == schools.NO_SCHOOL).all()
     qa = (results / "intake_qa.csv").read_text().splitlines()
-    assert qa[0] == "code,name,maps,rings,main_found,area_km2,overlaps,method"
-    assert qa[1].startswith("5464,") and qa[1].endswith(",vector")
+    assert qa[0] == "code,name,maps,rings,main_found,area_km2,overlaps,method,school_inside"
+    assert qa[1].startswith("5464,") and qa[1].endswith(",vector,True")
 
 
 def test_stage_falls_back_to_raster(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -144,7 +166,7 @@ def test_stage_falls_back_to_raster(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     schools.build(tmp_path / "web", tmp_path, tmp_path / "cache", grid_meta(0.001), workers=1)
     sj = json.loads((tmp_path / "web" / "schools.json").read_text())
     assert sj["schools"][0][5] is True
-    assert (tmp_path / "intake_qa.csv").read_text().splitlines()[1].endswith(",raster")
+    assert (tmp_path / "intake_qa.csv").read_text().splitlines()[1].endswith(",raster,True")
 
 
 def test_download_retries_5xx(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

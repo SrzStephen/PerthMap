@@ -22,7 +22,7 @@ The same 60 minutes covers far less ground early on a Sunday than on a weekday m
 Search an address (or click anywhere) for a report: the fastest route to the CBD and the public primary and
 secondary school whose local intake area covers it. Pick schools under *Limit to school intake areas* to shade only
 the parts of their intake areas within your travel time. Intake areas are extracted from the Department of
-Education's intake maps (312 of the 403 metro public schools; the rest have no usable map), so they are approximate:
+Education's intake maps (310 of the 403 metro public schools; the rest have no usable map), so they are approximate:
 near a boundary, check the [official lookup](https://www.det.wa.edu.au/schoolsonline/home.do).
 
 ### On a phone
