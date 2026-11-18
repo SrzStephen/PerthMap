@@ -74,6 +74,12 @@ def test_download_skips_cached_and_non_pdf(tmp_path: Path):
     assert not (tmp_path / "B_1.pdf").exists()
 
 
+def test_download_404_means_no_map(tmp_path: Path):
+    s = FakeSession([Resp(content=b"%PDF map"), Resp(404)])
+    assert schools.download_maps(["D"], tmp_path, workers=1, session=s) == {"D": [tmp_path / "D_1.pdf"]}
+    assert (tmp_path / "D_2.none").exists()
+
+
 TOY = GridMeta(20, 20, 0.0, 0.0, 0.001)
 
 

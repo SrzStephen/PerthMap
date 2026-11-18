@@ -74,6 +74,8 @@ def _get(session, url: str, params: dict) -> bytes:
     for attempt in range(RETRIES + 1):
         try:
             r = session.get(url, params=params, timeout=60)
+            if r.status_code == 404:  # the school has no such map
+                return b""
             if r.status_code < 500:
                 r.raise_for_status()
                 return r.content
