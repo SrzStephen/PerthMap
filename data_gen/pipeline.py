@@ -52,6 +52,14 @@ METRIC_CRS = "EPSG:32750"  # WGS 84 / UTM 50S - metres around Perth
 
 GEOFABRIK_AU = "https://download.geofabrik.de/australia-oceania/australia-latest.osm.pbf"
 TRANSPERTH_GTFS = "https://www.transperth.wa.gov.au/TimetablePDFs/GoogleTransit/Production/google_transit.zip"
+SRTM_DIR = INPUT / "srtm"
+SRTM_TILES = ["S32E115", "S33E115", "S32E116", "S33E116"]  # SW corners; cover GRID_BBOX
+BIKE_MAX_S = 10800  # longest direct bike ride MOTIS is asked for (and allowed to serve)
+
+
+def srtm_url(tile: str) -> str:
+    """AWS Open Data terrain tiles (no auth); `tile` like S32E115."""
+    return f"https://s3.amazonaws.com/elevation-tiles-prod/skadi/{tile[:3]}/{tile}.hgt.gz"
 
 
 @dataclass(frozen=True)
@@ -96,6 +104,32 @@ def download(url: str, dest: Path) -> None:
     tmp.rename(dest)
 
 
+def motis_config(perth_osm: Path, gtfs: Path, threads: int) -> str:
+    return f"""\
+server:
+  port: 8080
+  web_folder: /ui
+  n_threads: {threads}
+osm: {perth_osm}
+timetable:
+  first_day: TODAY
+  num_days: 60
+  datasets:
+    transperth:
+      path: {gtfs}
+street_routing: true
+osr_footpath: true
+geocoding: false
+reverse_geocoding: false
+limits:
+  onetomany_max_many: 100000
+  onetoall_max_results: 100000
+  onetoall_max_travel_minutes: 240
+  street_routing_max_prepost_transit_seconds: 3600
+  street_routing_max_direct_seconds: {BIKE_MAX_S}
+"""
+
+
 def prepare(args: argparse.Namespace) -> None:
     INPUT.mkdir(parents=True, exist_ok=True)
     MOTIS_DIR.mkdir(parents=True, exist_ok=True)
@@ -118,29 +152,16 @@ def prepare(args: argparse.Namespace) -> None:
     if not gtfs.exists() or not args.keep_gtfs:
         download(TRANSPERTH_GTFS, gtfs)
 
-    config = f"""\
-server:
-  port: 8080
-  web_folder: /ui
-  n_threads: {os.cpu_count() or 8}
-osm: {perth_osm}
-timetable:
-  first_day: TODAY
-  num_days: 60
-  datasets:
-    transperth:
-      path: {gtfs}
-street_routing: true
-osr_footpath: true
-geocoding: false
-reverse_geocoding: false
-limits:
-  onetomany_max_many: 100000
-  onetoall_max_results: 100000
-  onetoall_max_travel_minutes: 240
-  street_routing_max_prepost_transit_seconds: 3600
-  street_routing_max_direct_seconds: 7200
-"""
+    for tile in SRTM_TILES:
+        hgt = SRTM_DIR / f"{tile}.hgt"
+        if not hgt.exists():
+            SRTM_DIR.mkdir(parents=True, exist_ok=True)
+            gz = hgt.with_suffix(".hgt.gz")
+            download(srtm_url(tile), gz)
+            hgt.write_bytes(gzip.decompress(gz.read_bytes()))
+            gz.unlink()
+
+    config = motis_config(perth_osm, gtfs, os.cpu_count() or 8)
     (MOTIS_DIR / "config.yml").write_text(config)
     log(f"wrote {MOTIS_DIR / 'config.yml'}")
     masks(args)
@@ -667,12 +688,30 @@ class Motis:
         r.raise_for_status()
         return r.json()
 
+    def bike_times(self, one: tuple[float, float], many: np.ndarray, max_s: int, max_match_m: int) -> np.ndarray:
+        """Seconds to ride from each `many` point to `one` (NaN if unreachable)."""
+        return self._one_to_many("BIKE", one, many, max_s, max_match_m)
+
+    def bike_plan(self, frm: tuple[float, float], max_s: int) -> dict | None:
+        """The direct bike leg from `frm` to work (with `steps`), or None if MOTIS finds none."""
+        r = self.s.get(f"{self.url}/api/v5/plan", timeout=60, params={
+            "fromPlace": f"{frm[0]},{frm[1]}", "toPlace": f"{WORK[0]},{WORK[1]}",
+            "directModes": "BIKE", "transitModes": "", "maxDirectTime": max_s,
+        })
+        r.raise_for_status()
+        direct = r.json().get("direct") or []
+        return direct[0]["legs"][0] if direct else None
+
     def walk_times(self, one: tuple[float, float], many: np.ndarray, max_s: int, max_match_m: int) -> np.ndarray:
         """Seconds to walk from each `many` point to `one` (NaN if unreachable)."""
+        return self._one_to_many("WALK", one, many, max_s, max_match_m)
+
+    def _one_to_many(self, mode: str, one: tuple[float, float], many: np.ndarray, max_s: int,
+                     max_match_m: int) -> np.ndarray:
         body = {
             "one": f"{one[0]};{one[1]}",
             "many": [f"{la};{lo}" for la, lo in many],
-            "mode": "WALK",
+            "mode": mode,
             "max": max_s,
             "maxMatchingDistance": max_match_m,
             "arriveBy": True,
