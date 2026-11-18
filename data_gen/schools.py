@@ -151,12 +151,13 @@ def decode_intake(b: bytes) -> tuple[np.ndarray, np.ndarray]:
 
 
 def rasterise(meta: GridMeta, polys: list[tuple[int, Polygon]]) -> tuple[np.ndarray, dict[int, int]]:
-    """School index per lattice point inside its polygon; first claim wins. Also cells each school shares."""
+    """School index per lattice point inside its polygon; where areas overlap the smallest wins (a newer school's
+    area carved out of an older, larger map). Also the number of cells each school shares."""
     xs = meta.min_lon + np.arange(meta.width) * meta.spacing
     ys = meta.min_lat + np.arange(meta.height) * meta.spacing
     plane = np.full(meta.width * meta.height, NO_SCHOOL, dtype=np.uint16)
     overlaps: dict[int, int] = {}
-    for i, poly in polys:
+    for i, poly in sorted(polys, key=lambda ip: ip[1].area):
         x0, y0, x1, y1 = poly.bounds
         cx = np.nonzero((xs >= x0) & (xs <= x1))[0]
         cy = np.nonzero((ys >= y0) & (ys <= y1))[0]

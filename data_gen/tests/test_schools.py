@@ -107,6 +107,13 @@ def test_rasterise_overlap_counts():
     assert overlaps == {1: 10, 2: 10}
 
 
+def test_rasterise_smaller_area_wins_overlap():
+    big = box(-0.0005, -0.0005, 0.0095, 0.0095)  # e.g. Shenton's 2018 map
+    carve = box(-0.0005, -0.0005, 0.0025, 0.0025)  # a newer school carved out of it
+    plane, _ = schools.rasterise(TOY, [(1, big), (2, carve)])
+    assert plane[0] == 2 and plane[9] == 1
+
+
 def test_stage_writes_outputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     poc = shape(json.loads((FIX / "intake_5464.geojson").read_text())["features"][0]["geometry"])
     pt = poc.representative_point()

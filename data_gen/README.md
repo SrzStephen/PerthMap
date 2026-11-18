@@ -59,8 +59,10 @@ Each school's `INTAKE_MAP01`/`02` PDF is downloaded once (8 in parallel) into `d
 remembered as `<code>_<n>.none` (`schools --force` re-checks those). The maps are Esri GeoPDFs: four control points
 georeference the page and the boundary is a vector path, so no tracing is needed. A school's main area is the
 smallest ring holding the school; rings hatched with a clip are optional areas; other rings are neighbouring schools'.
-`data/results/intake_qa.csv` lists schools with no map or no main ring and cells claimed by two schools (the lower
-school number wins). The areas are approximate: the legal boundary is the Government Gazette text.
+Older ArcMap exports have the boundary only in the image; for those the region enclosed by boundary-blue pixels
+around the school is traced instead (`method = raster`; main area only). `data/results/intake_qa.csv` lists schools
+with no map or no main ring and cells claimed by two schools (the smaller area wins: typically a newer school's area
+carved out of an older, larger map). The areas are approximate: the legal boundary is the Government Gazette text.
 Local intake areas © Department of Education WA, CC BY 4.0. The UBD basemap inside the PDFs is never used.
 
 ### Accuracy guards
