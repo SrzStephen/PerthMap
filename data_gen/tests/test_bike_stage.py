@@ -72,6 +72,11 @@ def test_stage_writes_files(tmp_path, monkeypatch):
     assert set(index["bike"]) == {"refSpeedKmh", "mismatchRate", "missingRate"}
 
 
+def test_chunk_fits_motis_body_limit():
+    # MOTIS rejects request bodies over ~1 MB ("body limit exceeded"); a point is ~27 bytes of JSON
+    assert bike_mod.ONE_TO_MANY_CHUNK * len('"-31.955612;115.860234",') <= 600_000
+
+
 def test_stage_needs_index(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "WEB", tmp_path)
     args = argparse.Namespace(motis_url="http://x", spacing=0.001, snap=100, walkable_within=75, workers=2,

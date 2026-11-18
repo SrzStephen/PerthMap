@@ -151,7 +151,7 @@ class SegmentTable:
 
 
 # ------------------------------------------------------------------------------ stage
-ONE_TO_MANY_CHUNK = 100_000  # MOTIS limits.onetomany_max_many
+ONE_TO_MANY_CHUNK = 20_000  # points per request: MOTIS rejects bodies over ~1 MB
 
 
 def ref_speed_kmh(legs: list[dict]) -> float:
