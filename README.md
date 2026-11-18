@@ -1,14 +1,25 @@
 # [PerthMap](https://perthmap.phteven.space/)
-![Desktop view](doc/img.png)
-
-<img src="doc/img-mobile.png" alt="Mobile view" width="260">
+![Travel time to the Perth CBD, weekday arriving 08:00–09:00, areas within 60 minutes](doc/map.png)
 
 ## What
 I couldn't find a good source of truth for "How long will it take me to get to work" using public transport, so I built one.
 
 Pick a day (weekday, Saturday or Sunday) and a one-hour arrival window (06:00–22:00): the map shades everywhere you
-can reach the Perth CBD from within the selected minutes (the typical time over that hour). Click any point to see
-its fastest route — the walk to the stop, each bus/train/ferry leg with its times, and when to leave.
+can reach the Perth CBD from within the selected minutes (the typical time over that hour). Darker is faster.
+
+### Click anywhere for the route
+Clicking a point shows its fastest trip in that window — when to leave, the walk to the stop, each bus, train or
+ferry leg with its times, and the walk at the end — and draws it on the map.
+
+![Route from Leeming: bus 516 to Murdoch, then the Mandurah line to the city](doc/route.png)
+
+### Service changes through the week
+The same 60 minutes covers far less ground early on a Sunday than on a weekday morning.
+
+![Sunday arriving 07:00–08:00, areas within 60 minutes](doc/sunday-early.png)
+
+### On a phone
+<img src="doc/mobile.png" alt="Mobile view with the controls in a bottom sheet" width="260">
 
 ## Tools used
 

@@ -1,7 +1,7 @@
 """End-to-end check of the built app (and doc/ screenshots).
 
     npm run build && npx vite preview --port 4789 --strictPort &
-    uv run --with playwright==1.58.0 python scripts/e2e-route.py [--chrome PATH] [--screenshots doc]
+    uv run --with playwright==1.58.0 python scripts/e2e-route.py [--chrome PATH] [--screenshots DIR]
 """
 import argparse
 import sys
@@ -20,7 +20,7 @@ def wait_ready(page) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--chrome", help="Chromium executable (default: Playwright's)")
-    ap.add_argument("--screenshots", help="directory to save desktop/mobile screenshots into")
+    ap.add_argument("--screenshots", help="directory to save e2e-desktop.png / e2e-mobile.png into")
     args = ap.parse_args()
 
     with sync_playwright() as p:
@@ -46,7 +46,7 @@ def main() -> None:
         expect(panel.get_by_role("listitem").first).to_be_visible()
         assert page.locator(".leaflet-route-pane path").count() > 0, "route not drawn"
         if args.screenshots:
-            page.screenshot(path=f"{args.screenshots}/img.png")
+            page.screenshot(path=f"{args.screenshots}/e2e-desktop.png")
 
         page.keyboard.press("Escape")
         expect(panel).to_have_count(0)
@@ -55,7 +55,7 @@ def main() -> None:
             mobile = browser.new_page(viewport={"width": 390, "height": 844}, is_mobile=True, device_scale_factor=2)
             mobile.goto(URL, wait_until="networkidle")
             wait_ready(mobile)
-            mobile.screenshot(path=f"{args.screenshots}/img-mobile.png")
+            mobile.screenshot(path=f"{args.screenshots}/e2e-mobile.png")
         browser.close()
 
     if errors:
