@@ -15,7 +15,9 @@ from typing import Callable
 import numpy as np
 import pymupdf
 from pyproj import Transformer
+from scipy import ndimage
 from shapely.geometry import Point, Polygon
+from skimage import measure
 from shapely.ops import transform
 
 BOUNDARY_RGB = (0.0, 0.149, 0.451)
@@ -60,16 +62,23 @@ def geo_corners(doc: pymupdf.Document) -> list[tuple[tuple[float, float], tuple[
     return out
 
 
-def georef(doc: pymupdf.Document) -> Callable[[float, float], tuple[float, float]]:
-    """Page point (y from the top) -> (lon, lat), via an affine fit of the corners in MGA zone 50."""
+def _affine(doc: pymupdf.Document) -> np.ndarray:
+    """3x3 matrix taking page points (x, y from the top, 1) to MGA zone 50 (E, N, 1)."""
     corners = geo_corners(doc)
     a = np.array([[x, y, 1.0] for (x, y), _ in corners])
     e, n = _TO_MGA.transform([c[1][0] for c in corners], [c[1][1] for c in corners])
     ce = np.linalg.lstsq(a, np.asarray(e), rcond=None)[0]
     cn = np.linalg.lstsq(a, np.asarray(n), rcond=None)[0]
+    return np.array([ce, cn, [0.0, 0.0, 1.0]])
+
+
+def georef(doc: pymupdf.Document) -> Callable[[float, float], tuple[float, float]]:
+    """Page point (y from the top) -> (lon, lat), via an affine fit of the corners in MGA zone 50."""
+    m = _affine(doc)
 
     def f(x: float, y: float) -> tuple[float, float]:
-        return _FROM_MGA.transform(ce @ (x, y, 1.0), cn @ (x, y, 1.0))
+        e, n, _ = m @ (x, y, 1.0)
+        return _FROM_MGA.transform(e, n)
 
     return f
 
@@ -133,6 +142,43 @@ def boundary_rings(pdf: Path) -> list[Ring]:
                 continue
             rings.extend(Ring(p, hatched) for p in (poly.geoms if poly.geom_type == "MultiPolygon" else [poly]))
     return rings
+
+
+RASTER_DPI = 150
+RASTER_RGB = np.array([0, 38, 115])  # the boundary colour once ArcMap 10.x has baked it into the image
+RASTER_TOL = 50
+
+
+def raster_intake(pdf: Path, school: tuple[float, float]) -> Polygon | None:
+    """Fallback for maps whose boundary is only in the image (ArcMap 10.x): the region enclosed by boundary-blue
+    pixels around the school, or None when the fill escapes to the page edge (no closed boundary around it)."""
+    doc = pymupdf.open(pdf)
+    m = _affine(doc)
+    pix = doc[0].get_pixmap(dpi=RASTER_DPI, colorspace=pymupdf.csRGB, alpha=False)
+    rgb = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3).astype(int)
+    line = np.abs(rgb - RASTER_RGB).max(axis=2) < RASTER_TOL
+    line = ndimage.binary_dilation(line, iterations=1)  # close anti-aliasing gaps in the stroke
+
+    scale = RASTER_DPI / 72
+    e, n = _TO_MGA.transform(*school)
+    px, py, _ = np.linalg.solve(m, (e, n, 1.0))
+    col, row = int(round(px * scale)), int(round(py * scale))
+    if not (0 <= row < pix.height and 0 <= col < pix.width):
+        return None
+    labels, _ = ndimage.label(~line)
+    target = labels[row, col]
+    if target == 0:  # the school sits on the line itself
+        return None
+    region = labels == target
+    if region[0].any() or region[-1].any() or region[:, 0].any() or region[:, -1].any():
+        return None
+    region = ndimage.binary_fill_holes(region)
+    contours = measure.find_contours(np.pad(region, 1).astype(float), 0.5)
+    ring = max(contours, key=len) - 1  # undo the padding; (row, col)
+    poly = Polygon([georef(doc)(c / scale, r / scale) for r, c in ring]).buffer(0)
+    if poly.geom_type == "MultiPolygon":
+        poly = max(poly.geoms, key=lambda p: p.area)
+    return poly if poly.contains(Point(school)) else None
 
 
 def select_intake(rings: list[Ring], school: tuple[float, float]) -> tuple[Polygon | None, list[Polygon]]:

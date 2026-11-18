@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pymupdf
 import pytest
+import shapely
 from pyproj import Geod
 from shapely.geometry import box, shape
 from shapely.ops import transform, unary_union
@@ -87,6 +88,27 @@ def test_clip_without_layer_still_marks_optional():
                "rect": pymupdf.Rect(252.1, 45.1, 594.0, 311.1)}
     seq = [outline, {"type": "clip", "layer": "", "scissor": pymupdf.Rect(252.14, 45.11, 593.96, 311.15)}]
     assert [h for _, h in intake.boundary_paths(seq)] == [True]
+
+
+RASTER = FIX / "intake_5103_raster.pdf"  # City Beach PS: ArcMap 10.6, boundary baked into the image
+CITY_BEACH_PS = (115.76512599, -31.93538508)
+
+
+def test_raster_map_has_no_vector_rings():
+    assert intake.boundary_rings(RASTER) == []
+
+
+def test_raster_intake_city_beach():
+    poly = intake.raster_intake(RASTER, CITY_BEACH_PS)
+    assert poly is not None and poly.is_valid
+    assert poly.contains(shapely.Point(CITY_BEACH_PS))
+    x0, y0, x1, y1 = poly.bounds
+    assert 115.74 < x0 and x1 < 115.80 and -31.98 < y0 and y1 < -31.90
+    assert 2 < area_km2(poly) < 12
+
+
+def test_raster_intake_outside_any_boundary_is_none():
+    assert intake.raster_intake(RASTER, (115.70, -31.94)) is None  # out at sea: the fill leaks to the map edge
 
 
 def test_not_geopdf(tmp_path):

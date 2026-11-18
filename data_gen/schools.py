@@ -196,8 +196,19 @@ def build(web: Path, results: Path, cache: Path, meta: GridMeta, workers: int = 
                 rings += intake.boundary_rings(pdf)
             except Exception as e:  # a damaged or non-Geo PDF: this school just has no area
                 log(f"  {s.code} {pdf.name}: {e}")
+        method = ""
         if rings:
             main, optional = intake.select_intake(rings, (s.lon, s.lat))
+            method = "vector" if main is not None else ""
+        else:  # older ArcMap exports have the boundary only in the image
+            for pdf in maps.get(s.code, []):
+                try:
+                    main = intake.raster_intake(pdf, (s.lon, s.lat))
+                except Exception as e:
+                    log(f"  {s.code} {pdf.name} (raster): {e}")
+                if main is not None:
+                    method = "raster"
+                    break
         has_intake.append(main is not None)
         if main is not None:
             features += [_feature(i, "main", main)] + [_feature(i, "optional", o) for o in optional]
@@ -206,7 +217,7 @@ def build(web: Path, results: Path, cache: Path, meta: GridMeta, workers: int = 
             if s.secondary:
                 by_level["S"].append((i, main))
         area = round(transform(_TO_M.transform, main).area / 1e6, 3) if main is not None else ""
-        qa.append([s.code, s.name, len(maps.get(s.code, [])), len(rings), main is not None, area])
+        qa.append([s.code, s.name, len(maps.get(s.code, [])), len(rings), main is not None, area, method])
     primary, p_over = rasterise(meta, by_level["P"])
     secondary, s_over = rasterise(meta, by_level["S"])
 
@@ -219,9 +230,9 @@ def build(web: Path, results: Path, cache: Path, meta: GridMeta, workers: int = 
     (web / "intake.bin").write_bytes(encode_intake(primary, secondary, meta))
     with open(results / "intake_qa.csv", "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["code", "name", "maps", "rings", "main_found", "area_km2", "overlaps"])
+        w.writerow(["code", "name", "maps", "rings", "main_found", "area_km2", "overlaps", "method"])
         for i, row in enumerate(qa):
-            w.writerow(row + [p_over.get(i, 0) + s_over.get(i, 0)])
+            w.writerow(row[:-1] + [p_over.get(i, 0) + s_over.get(i, 0), row[-1]])
     overlapping = sum(1 for i in range(len(found)) if p_over.get(i) or s_over.get(i))
     log(f"intake: {sum(has_intake)}/{len(found)} schools with an area, {overlapping} overlapping (intake_qa.csv)")
 

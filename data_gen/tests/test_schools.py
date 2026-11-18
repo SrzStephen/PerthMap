@@ -125,7 +125,19 @@ def test_stage_writes_outputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert 160 < (primary == 0).sum() < 220  # ~2.0 km² at ~0.0105 km² (94 m x 111 m) per 0.001° cell
     assert (secondary == schools.NO_SCHOOL).all()
     qa = (results / "intake_qa.csv").read_text().splitlines()
-    assert qa[0] == "code,name,maps,rings,main_found,area_km2,overlaps" and qa[1].startswith("5464,")
+    assert qa[0] == "code,name,maps,rings,main_found,area_km2,overlaps,method"
+    assert qa[1].startswith("5464,") and qa[1].endswith(",vector")
+
+
+def test_stage_falls_back_to_raster(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    city_beach = schools.School("5103", "City Beach Primary School", True, False, -31.93538508, 115.76512599)
+    monkeypatch.setattr(schools, "fetch_schools", lambda bbox: [city_beach])
+    monkeypatch.setattr(schools, "download_maps",
+                        lambda codes, dest, workers: {"5103": [FIX / "intake_5103_raster.pdf"]})
+    schools.build(tmp_path / "web", tmp_path, tmp_path / "cache", grid_meta(0.001), workers=1)
+    sj = json.loads((tmp_path / "web" / "schools.json").read_text())
+    assert sj["schools"][0][5] is True
+    assert (tmp_path / "intake_qa.csv").read_text().splitlines()[1].endswith(",raster")
 
 
 def test_download_retries_5xx(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
