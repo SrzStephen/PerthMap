@@ -77,5 +77,29 @@ Local intake areas © Department of Education WA, CC BY 4.0. The UBD basemap ins
 
 To rebuild just the masks on an existing setup: `docker compose run --rm --no-deps route masks --force`.
 
+## Bike
+```sh
+docker compose run --rm route bike   # after `route` (it adds to index.json); ~15 min
+```
+Time-independent, so one grid for all days. `prepare` also downloads four SRTM elevation tiles
+([AWS Open Data terrain tiles](https://registry.opendata.aws/terrain-tiles/), no login) to `data/input/srtm/`
+and lets MOTIS serve direct rides of up to 3 h (`street_routing_max_direct_seconds: 10800`).
+
+1. **Ride times** – batched BIKE `one-to-many` queries from the walkable grid points to work. MOTIS rides at a
+   constant speed (~15 km/h), so the time is the distance in disguise and the web app rescales it to any speed.
+2. **Paths** – one direct BIKE `/api/v5/plan` per 5×5-cell block (~500 m), from its reachable point nearest the
+   centre; every cell in the block shows that path. Each MOTIS step is a segment keyed by its OSM nodes, so streets
+   shared by many rides are stored once.
+3. **Elevation** – heights every 50 m along each segment from the SRTM tiles, which measure the surface, not the
+   ground: voids are filled, a 9×9 (~270 m) opening removes towers and trees, a 5×5 median removes what spikes are
+   left, and samples over water — bridges — are interpolated from the banks. Climb and descent are summed between
+   turning points that reverse by at least 5 m.
+
+| File | Content |
+|---|---|
+| `bike.grid.bin` | gzip of `"PMB1"`, `u16` version, `u32` width, `u32` height (little-endian), then per cell `u16` ride seconds at `refSpeedKmh` (`0xFFFF` unreachable) and `u16` path index (`0xFFFF` none). Row 0 is the south edge. |
+| `bike.routes.json` | `{refSpeedKmh, shapes, lengths, elev, paths}`: per segment an encoded polyline (precision 5), its length in metres and its heights `[h0, Δ…]` every 50 m (last gap shorter; `null` = no data); `paths` = `[seconds, metres, ascent, descent, [segment…]]` |
+| `index.json` | gains `bike: {refSpeedKmh, mismatchRate, missingRate}` |
+
 Tests: `cd data/ && uv run --group dev pytest ../tests -q`.
 Options: `docker compose run --rm route route --help` (`--days`, `--hours`, `--spacing`, `--max-walk`, …).

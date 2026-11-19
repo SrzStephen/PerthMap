@@ -16,6 +16,8 @@ export interface DataIndex {
     grid: GridMeta
     days: { key: DayKey; label: string; date: string }[]
     hours: number[]
+    /** Present once the `bike` stage has run. */
+    bike?: { refSpeedKmh: number; mismatchRate: number | null; missingRate: number }
 }
 
 export interface Grid {

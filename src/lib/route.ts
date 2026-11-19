@@ -37,7 +37,7 @@ export const leaveTime = (firstDepart: number, walkMin: number) => fmtTime(first
 /** Cells only exist near walkable ways; a click in a park or on a verge uses the nearest reachable cell. */
 const SNAP_CELLS = 2
 
-function nearestReachable(grid: Grid, i: number): number | null {
+export function nearestReachable(grid: Grid, i: number): number | null {
     if (grid.fastest[i] !== UNREACHABLE) return i
     const {width, height} = grid.meta
     const x0 = i % width, y0 = Math.floor(i / width)
@@ -79,7 +79,7 @@ const MODE_NAMES: Record<string, string> = {BUS: 'Bus', FERRY: 'Ferry', RAIL: 'T
 export const isWalk = (leg: Leg, routes: Routes) => routes.lines[leg[0]][0] === 'WALK'
 
 /** Route overlay colours: distinct from the teal/violet bands underneath. */
-export const MODE_COLORS = {TRAIN: '#2563eb', BUS: '#ea580c', FERRY: '#9333ea', WALK: '#475569'} as const
+export const MODE_COLORS = {TRAIN: '#2563eb', BUS: '#ea580c', FERRY: '#9333ea', WALK: '#475569', BIKE: '#16a34a'} as const
 
 export function modeColor(mode: string): string {
     if (mode === 'WALK') return MODE_COLORS.WALK

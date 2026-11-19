@@ -1,7 +1,7 @@
 """End-to-end check of the built app (and doc/ screenshots).
 
     npm run build && npx vite preview --port 4789 --strictPort &
-    uv run --with playwright==1.58.0 python scripts/e2e-route.py [--chrome PATH] [--screenshots DIR]
+    uv run --with playwright==1.58.0 python scripts/e2e-route.py [--chrome PATH] [--screenshots DIR] [--url URL]
 """
 import argparse
 import sys
@@ -21,8 +21,8 @@ def wait_ready(page) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--chrome", help="Chromium executable (default: Playwright's)")
+    ap.add_argument("--screenshots", help="directory to save e2e-desktop.png / e2e-bike.png / e2e-mobile.png into")
     ap.add_argument("--url", default=URL, help=f"app URL (default {URL})")
-    ap.add_argument("--screenshots", help="directory to save e2e-desktop.png / e2e-mobile.png into")
     args = ap.parse_args()
 
     with sync_playwright() as p:
@@ -49,6 +49,23 @@ def main() -> None:
         assert page.locator(".leaflet-route-pane path").count() > 0, "route not drawn"
         if args.screenshots:
             page.screenshot(path=f"{args.screenshots}/e2e-desktop.png")
+
+        # Bike: the open panel re-resolves the same point as a ride
+        page.get_by_role("radio", name="Bike").click()
+        expect(page.get_by_role("radiogroup", name="Speed")).to_be_visible()
+        wait_ready(page)
+        expect(panel).to_contain_text("Ride", timeout=15000)
+        expect(panel).to_contain_text("at 15 km/h")
+        page.get_by_role("radio", name="25 km/h").click()
+        wait_ready(page)
+        expect(panel).to_contain_text("at 25 km/h", timeout=15000)
+        expect(panel.get_by_role("img", name="Elevation profile")).to_be_visible()
+        assert page.locator(".leaflet-route-pane path").count() > 0, "ride not drawn"
+        if args.screenshots:
+            page.screenshot(path=f"{args.screenshots}/e2e-bike.png")
+        page.get_by_role("radio", name="Transit").click()
+        wait_ready(page)
+        expect(panel).to_contain_text("Best", timeout=15000)
 
         page.keyboard.press("Escape")
         expect(panel).to_have_count(0)
