@@ -918,6 +918,9 @@ def main() -> None:
     sp = sub.add_parser("hazards", help="hazard and noise layers on the travel-time grid")
     sp.set_defaults(fn=lambda a: __import__("hazards").hazards_stage(a))  # lazy: hazards imports this module
 
+    sp = sub.add_parser("amenities", help="supermarkets, parks, stations, GPs, … from OpenStreetMap")
+    sp.set_defaults(fn=lambda a: __import__("amenities").amenities_stage(a))  # lazy: amenities imports this module
+
     args = p.parse_args()
     args.fn(args)
 

@@ -4,6 +4,7 @@
     uv run --with playwright==1.58.0 python scripts/e2e-route.py [--chrome PATH] [--screenshots DIR] [--url URL]
 """
 import argparse
+import re
 import sys
 
 from playwright.sync_api import expect, sync_playwright
@@ -111,6 +112,12 @@ def main() -> None:
             "document.querySelectorAll('.leaflet-lines-powerlines-json-pane path').length > 0", timeout=15000)
         if args.screenshots:
             page.screenshot(path=f"{args.screenshots}/e2e-hazards.png")
+
+        # amenities from OpenStreetMap
+        page.get_by_role("button", name="Amenities").click()
+        page.get_by_role("button", name=re.compile(r"^Train stations \(\d+\)$")).click()
+        expect(page.get_by_role("button", name="Amenities (1 shown)")).to_be_visible()
+        expect(page.locator(".leaflet-amenities-pane canvas")).to_have_count(1)
 
         if args.screenshots:
             mobile = browser.new_page(viewport={"width": 390, "height": 844}, is_mobile=True, device_scale_factor=2)

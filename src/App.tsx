@@ -4,6 +4,9 @@ import {TravelTimeMap} from './components/map/TravelTimeMap'
 import {IntakeLayer, IntakeLegend} from './components/map/IntakeLayer'
 import {AttrRasterLayer} from './components/map/AttrRasterLayer'
 import {LineLayer} from './components/map/LineLayer'
+import {AmenityLayer} from './components/map/AmenityLayer'
+import {AmenityPicker} from './components/panel/AmenityPicker'
+import {loadAmenities, type AmenityData} from './lib/amenities'
 import {ControlCard, type Mode} from './components/panel/ControlCard'
 import {SchoolPicker} from './components/panel/SchoolPicker'
 import {FilterPanel} from './components/panel/FilterPanel'
@@ -54,6 +57,8 @@ function App() {
     const [active, setActive] = useState<ActiveFilters>({})
     const [shown, setShown] = useState<string[]>([])
     const attrs = typeof attrData === 'object' ? attrData : null
+    const [amenities, setAmenities] = useState<AmenityData | null>(null)
+    const [amenityTypes, setAmenityTypes] = useState<string[]>([])
     const mask = useMemo(() => andMasks(
         typeof schoolData === 'object' ? intakeMask(schoolData, selected) : null,
         attrs ? filterMask(attrs, active) : null,
@@ -92,6 +97,10 @@ function App() {
             setAttrData('error')
         })
     }, [index])
+
+    useEffect(() => {
+        loadAmenities().then(setAmenities, e => console.error('loading amenities', e))
+    }, [])
 
     const schools: SchoolsState = useMemo(() => {
         if (!clicked || !index) return null
@@ -133,6 +142,7 @@ function App() {
                     const line = LINE_LAYERS[id]
                     return line ? <LineLayer key={id} file={line.file} colour={line.colour} weight={line.weight}/> : null
                 })}
+                {amenities && <AmenityLayer data={amenities} selected={amenityTypes}/>}
                 {loaded && <IntakeLayer areas={loaded.areas} schools={loaded.schools} selected={selected} highlight={highlight}/>}
                 {route && <RouteOverlay point={route.point} result={route.result} routes={route.routes} stops={route.stops}/>}
                 {ride && <RideOverlay point={ride.point} result={ride.result}/>}
@@ -156,6 +166,7 @@ function App() {
                                      filters={availableFilters(attrs)} active={active} onChange={setActive}
                                      shown={shown} onShownChange={setShown} empty={maskEmpty}/>
                     )}
+                    {amenities && <AmenityPicker types={amenities.types} selected={amenityTypes} onChange={setAmenityTypes}/>}
                 </>}
             >
                 {route && title && (

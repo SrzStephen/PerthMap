@@ -37,6 +37,11 @@ the nearest powerline or substation. Under *Hazards & noise*, tick filters (not 
 vehicles/day within 200 m, ≥ 200 m from powerlines…) to shade only the areas that pass, and use the eye to draw a
 layer on the map. Values are per 100 m grid cell.
 
+### Amenities
+Under *Amenities*, toggle supermarkets, parks, playgrounds, train stations, GPs, pharmacies, hospitals, childcare,
+libraries and cafés to dot them on the map (hover a dot for its name). They come from OpenStreetMap, so coverage
+varies, particularly for GPs and childcare.
+
 ### Local build
 Some useful WA layers are licensed for personal use only, so the public site can't show them: acid sulfate soils
 (DWER-055) and State Planning Policy 5.4 road/rail noise areas (DPLH-057). The `hazards` stage writes them to
@@ -63,7 +68,7 @@ Some useful WA layers are licensed for personal use only, so the public site can
 
 # Data
 See [data_gen](data_gen/README.md) for how to generate data (`docker compose up --build route`, `docker compose run --rm route bike`,
-`docker compose run --rm --no-deps route schools`, `docker compose run --rm --no-deps route hazards`, then copy `data_gen/data/results/web/` to `public/data/`). The site is static: each window is a small gzipped travel-time grid
+`docker compose run --rm --no-deps route schools`, `docker compose run --rm --no-deps route hazards`, `docker compose run --rm --no-deps route amenities`, then copy `data_gen/data/results/web/` to `public/data/`). The site is static: each window is a small gzipped travel-time grid
 plus a route table, fetched on demand and contoured in the browser.
 
 # Checks

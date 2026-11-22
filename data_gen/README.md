@@ -18,6 +18,7 @@ docker compose down
 | `motis` | `ghcr.io/motis-project/motis` | Serves the API (and a web UI at http://localhost:8080 for spot checks) |
 | `route` | pipeline | Travel times and fastest routes for every window → `data/results/web/` |
 | `schools` | pipeline | Public schools (DET-024) and their local intake areas from the Department of Education's intake-map GeoPDFs → `data/results/web/` (run after `route`, so it reuses its grid). `docker compose run --rm --no-deps route schools` |
+| `amenities` | pipeline | Supermarkets, parks (≥ 1000 m²), playgrounds, train stations, GPs, pharmacies, hospitals, childcare, libraries and cafés from the Perth OSM extract → `data/results/web/amenities.json`. `docker compose run --rm --no-deps route amenities` |
 | `hazards` | pipeline | Bushfire prone areas, traffic volumes, OSM powerlines (public) and acid sulfate soils, SPP 5.4 road/rail noise areas (personal use only) rasterised onto the grid → `data/results/web/` and `data/results/web/local/`. `docker compose run --rm --no-deps route hazards` |
 
 Drop an existing `australia-latest.osm.pbf` into `data/input/` to skip the ~900 MB download.
@@ -53,6 +54,7 @@ Rather than planning one journey per grid point, `route` does:
 | `intake.json` | GeoJSON of intake areas, properties `{i: school number, kind: "main" \| "optional"}` (optional/conditional areas are hatched on the DoE maps); ~5 m simplified |
 | `intake.bin` | gzip of `"PMI1"`, `u16` version, `u32` width, `u32` height, then two `u16` planes over the travel-time grid: primary and secondary school number whose main intake area holds the cell (`0xFFFF` none) |
 | `attrs.bin` | gzip of `"PMA1"`, `u16` version, `u32` width, `u32` height, `u16` field count; per field `u8` name length, ASCII name, `u8` type (1 = `u8`, 2 = `u16`); a zero byte if needed to reach an even offset; then each field's plane over the travel-time grid (little-endian, row 0 south). Public fields: `bushfire` (1 = bushfire prone), `power_m` (metres to the nearest OSM power line or substation, capped 5000), `traffic_k` (busiest counted road within 200 m, thousand vehicles/day, 0 none) |
+| `amenities.json` | `{asOf, source, types: [[id, label], …], items: [[type index, lat, lon, name], …]}` — one point per OSM node or area (areas at a point inside them); `name` is `""` when OSM has none. © OpenStreetMap contributors, ODbL |
 | `layers.json` | `{layers: [{id, field, title, source, licence, url, asOf, local}]}` — where each field came from |
 | `traffic.json` | GeoJSON lines of roads carrying ≥ 5000 vehicles/day, property `k` = thousand vehicles/day; ~10 m simplified |
 | `powerlines.json` | GeoJSON of OSM `power=line` ways (`kind: "line"`) and substations as points (`kind: "substation"`) |

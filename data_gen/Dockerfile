@@ -26,7 +26,7 @@ COPY data/pyproject.toml data/uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev --python "$(which python3)"
 
-COPY pipeline.py bike.py elevation.py intake.py schools.py attrs.py hazards.py /opt/app/
+COPY pipeline.py bike.py elevation.py intake.py schools.py attrs.py hazards.py amenities.py /opt/app/
 WORKDIR /data
 ENTRYPOINT ["tini", "--", "python", "/opt/app/pipeline.py"]
 CMD ["--help"]
