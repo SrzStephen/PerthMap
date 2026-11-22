@@ -66,7 +66,7 @@ export function ControlCard(props: ControlCardProps) {
             data-sheet={isMobile ? (expanded ? 'expanded' : 'collapsed') : undefined}
             className={cn(
                 'glass absolute z-[1000] rounded-2xl text-[var(--text)]',
-                isMobile ? 'inset-x-4 bottom-4 max-h-[70dvh] overflow-y-auto p-4' : 'top-4 left-4 w-[320px] p-5',
+                isMobile ? 'inset-x-4 bottom-4 max-h-[70dvh] overflow-y-auto p-4' : 'top-4 left-4 max-h-[calc(100dvh-2rem)] w-[320px] overflow-y-auto p-5',
             )}
         >
             <header className="flex items-start justify-between gap-3">

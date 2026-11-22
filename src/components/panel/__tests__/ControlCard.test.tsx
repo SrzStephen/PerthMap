@@ -33,6 +33,13 @@ describe('ControlCard', () => {
         mobile.value = false
     })
 
+    it('scrolls on desktop instead of running off the screen', () => {
+        card()
+        const region = screen.getByRole('region', {name: 'Map controls'})
+        expect(region).toHaveClass('overflow-y-auto')
+        expect(region.className).toContain('max-h-[calc(100dvh-2rem)]')
+    })
+
     it('shows title, subtitle and the current value', () => {
         card()
         expect(screen.getByText('PerthMap')).toBeInTheDocument()
