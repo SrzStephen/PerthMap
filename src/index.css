@@ -124,3 +124,8 @@ body {
         bottom: 84px;
     }
 }
+
+/* attribute rasters: one crisp pixel per grid cell */
+.pixelated {
+    image-rendering: pixelated;
+}

@@ -2,6 +2,8 @@ import 'leaflet/dist/leaflet.css'
 import {useCallback, useEffect, useMemo, useState} from 'react'
 import {TravelTimeMap} from './components/map/TravelTimeMap'
 import {IntakeLayer} from './components/map/IntakeLayer'
+import {AttrRasterLayer} from './components/map/AttrRasterLayer'
+import {LineLayer} from './components/map/LineLayer'
 import {ControlCard, type Mode} from './components/panel/ControlCard'
 import {SchoolPicker} from './components/panel/SchoolPicker'
 import {FilterPanel} from './components/panel/FilterPanel'
@@ -21,9 +23,16 @@ import {useClickedRide} from './lib/useClickedRide'
 import {useClickedRoute} from './lib/useClickedRoute'
 import {useWindowData} from './lib/useWindowData'
 import {pointTitle} from './lib/utils'
+import {LAYER_STYLES} from './lib/raster'
 import {isBikeKey, type View} from './lib/views'
 
 const DEFAULT_HOURS = Array.from({length: 16}, (_, i) => 6 + i)
+const trafficWeight = (p: Record<string, unknown>) => Math.min(5, 1.5 + Number(p.k) / 20)
+const LINE_LAYERS: Record<string, { file: string; colour: string; weight?: typeof trafficWeight }> = {
+    traffic: {file: 'traffic.json', colour: '#dc2626', weight: trafficWeight},
+    power: {file: 'powerlines.json', colour: '#1d4ed8'},
+}
+
 const DEFAULT_DAYS: DataIndex['days'] = [{key: 'weekday', label: 'Weekday', date: ''}]
 
 function App() {
@@ -108,6 +117,15 @@ function App() {
     return (
         <main className="relative h-[100dvh] w-screen overflow-hidden">
             <TravelTimeMap minutes={minutes} bands={bands} onMapClick={onMapClick} focus={focus}>
+                {attrs && index && shown.map(id => {
+                    const layer = attrs.layers.find(l => l.id === id)
+                    const values = layer && attrs.fields[layer.field]
+                    if (LAYER_STYLES[id] && values) {
+                        return <AttrRasterLayer key={id} id={id} values={values} meta={index.grid} colour={LAYER_STYLES[id]}/>
+                    }
+                    const line = LINE_LAYERS[id]
+                    return line ? <LineLayer key={id} file={line.file} colour={line.colour} weight={line.weight}/> : null
+                })}
                 {loaded && <IntakeLayer areas={loaded.areas} selected={selected} highlight={highlight}/>}
                 {route && <RouteOverlay point={route.point} result={route.result} routes={route.routes} stops={route.stops}/>}
                 {ride && <RideOverlay point={ride.point} result={ride.result}/>}
