@@ -13,11 +13,12 @@ import {RidePanel} from './components/route/RidePanel'
 import {RouteOverlay} from './components/route/RouteOverlay'
 import {PropertyReport} from './components/report/PropertyReport'
 import {SchoolsSection, type SchoolsState} from './components/report/SchoolsSection'
+import {HazardsSection, type AttrsState} from './components/report/HazardsSection'
 import {THRESHOLDS} from './lib/bands'
 import type {Place} from './lib/geocode'
 import {loadIndex, type DataIndex, type DayKey} from './lib/grid'
 import {intakeAt, intakeMask, loadSchoolData, type SchoolData} from './lib/schools'
-import {loadAttrs, type AttrData} from './lib/attrs'
+import {attrsAt, loadAttrs, type AttrData} from './lib/attrs'
 import {andMasks, availableFilters, filterMask, type ActiveFilters} from './lib/filters'
 import {useClickedRide} from './lib/useClickedRide'
 import {useClickedRoute} from './lib/useClickedRoute'
@@ -97,6 +98,12 @@ function App() {
         if (typeof schoolData === 'string') return schoolData
         return intakeAt(schoolData, index.grid, clicked[0], clicked[1]) ?? {primary: null, secondary: null}
     }, [clicked, index, schoolData])
+    const hazards: AttrsState = useMemo(() => {
+        if (!clicked || !index) return null
+        if (typeof attrData === 'string') return attrData
+        const values = attrsAt(attrData, index.grid, clicked[0], clicked[1])
+        return values ? {values, data: attrData} : null
+    }, [clicked, index, attrData])
     const highlight = useMemo(() => (schools && typeof schools === 'object'
         ? [schools.primary, schools.secondary].filter(s => s !== null).map(s => s.index) : []), [schools])
 
@@ -152,12 +159,13 @@ function App() {
             >
                 {route && title && (
                     <PropertyReport title={title} route={route} schools={schools}
-                                    asOf={loaded?.asOf ?? null} onClose={close}/>
+                                    asOf={loaded?.asOf ?? null} attrs={hazards} onClose={close}/>
                 )}
                 {ride && (
                     <div aria-label="Property report">
                         <RidePanel result={ride.result} onClose={close}/>
                         <SchoolsSection schools={schools} asOf={loaded?.asOf ?? null}/>
+                        <HazardsSection attrs={hazards}/>
                     </div>
                 )}
             </ControlCard>

@@ -52,4 +52,10 @@ describe('PropertyReport', () => {
         await userEvent.keyboard('{Escape}')
         expect(onClose).toHaveBeenCalled()
     })
+
+    it('keeps the route when hazard data fails', () => {
+        render(<PropertyReport title="t" route={ROUTE} schools={null} asOf={null} attrs="error" onClose={vi.fn()}/>)
+        expect(screen.getByText('Best 18 min · typical 20 min')).toBeInTheDocument()
+        expect(screen.getByText('Hazard data unavailable')).toBeInTheDocument()
+    })
 })
