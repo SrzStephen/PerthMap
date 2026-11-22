@@ -5,3 +5,7 @@
 !elevation.py
 !data/pyproject.toml
 !data/uv.lock
+!intake.py
+!schools.py
+!attrs.py
+!hazards.py

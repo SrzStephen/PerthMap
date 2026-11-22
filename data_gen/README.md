@@ -18,6 +18,7 @@ docker compose down
 | `motis` | `ghcr.io/motis-project/motis` | Serves the API (and a web UI at http://localhost:8080 for spot checks) |
 | `route` | pipeline | Travel times and fastest routes for every window → `data/results/web/` |
 | `schools` | pipeline | Public schools (DET-024) and their local intake areas from the Department of Education's intake-map GeoPDFs → `data/results/web/` (run after `route`, so it reuses its grid). `docker compose run --rm --no-deps route schools` |
+| `hazards` | pipeline | Bushfire prone areas, traffic volumes, OSM powerlines (public) and acid sulfate soils, SPP 5.4 road/rail noise areas (personal use only) rasterised onto the grid → `data/results/web/` and `data/results/web/local/`. `docker compose run --rm --no-deps route hazards` |
 
 Drop an existing `australia-latest.osm.pbf` into `data/input/` to skip the ~900 MB download.
 
@@ -51,6 +52,11 @@ Rather than planning one journey per grid point, `route` does:
 | `schools.json` | `{asOf, source, schools: [[code, name, levels, lat, lon, hasIntake], …]}`, `levels` = `P`, `S` or `PS` (K–12); the index is the school number |
 | `intake.json` | GeoJSON of intake areas, properties `{i: school number, kind: "main" \| "optional"}` (optional/conditional areas are hatched on the DoE maps); ~5 m simplified |
 | `intake.bin` | gzip of `"PMI1"`, `u16` version, `u32` width, `u32` height, then two `u16` planes over the travel-time grid: primary and secondary school number whose main intake area holds the cell (`0xFFFF` none) |
+| `attrs.bin` | gzip of `"PMA1"`, `u16` version, `u32` width, `u32` height, `u16` field count; per field `u8` name length, ASCII name, `u8` type (1 = `u8`, 2 = `u16`); a zero byte if needed to reach an even offset; then each field's plane over the travel-time grid (little-endian, row 0 south). Public fields: `bushfire` (1 = bushfire prone), `power_m` (metres to the nearest OSM power line or substation, capped 5000), `traffic_k` (busiest counted road within 200 m, thousand vehicles/day, 0 none) |
+| `layers.json` | `{layers: [{id, field, title, source, licence, url, asOf, local}]}` — where each field came from |
+| `traffic.json` | GeoJSON lines of roads carrying ≥ 5000 vehicles/day, property `k` = thousand vehicles/day; ~10 m simplified |
+| `powerlines.json` | GeoJSON of OSM `power=line` ways (`kind: "line"`) and substations as points (`kind: "substation"`) |
+| `local/attrs.bin`, `local/layers.json` | personal-use-only fields: `acid` (1 high to moderate, 2 moderate to low acid sulfate soil risk, DWER-055), `noise` (SPP 5.4 trigger area, 1-based index into `hazards.NOISE_TYPES`, DPLH-057). Copy to `public/data/local/` (git-ignored) and run `npm run dev:local`; never deploy them |
 
 The run warns when more than 5 % of cells' planned trip differs from the grid time by over 5 minutes.
 
@@ -68,6 +74,14 @@ around the school is traced instead (`method = raster`; main area only). `data/r
 with no map or no main ring and cells claimed by two schools (the smaller area wins: typically a newer school's area
 carved out of an older, larger map). The areas are approximate: the legal boundary is the Government Gazette text.
 Local intake areas © Department of Education WA, CC BY 4.0. The UBD basemap inside the PDFs is never used.
+
+### Hazards and noise
+SLIP and Main Roads layers are fetched once per run from their ArcGIS services (GeoJSON, paged, clipped to the grid
+box); a service error or an empty answer stops the stage rather than writing an empty layer. A cell takes the value
+at its centre. Main Roads publishes traffic counts at sites, not per road: each site is matched to the nearest OSM
+major road (within 60 m) and also speaks for the same-named roads within 2 km, so `traffic_k` is unknown (0) on roads
+nobody counts. Bushfire prone areas (OBRM-026) and traffic volumes © Main Roads WA are CC BY 4.0; powerlines ©
+OpenStreetMap contributors, ODbL. DWER and DPLH layers are licensed for personal use only, so they live in `local/`.
 
 ### Accuracy guards
 - **Walkable grid only.** Grid points further than `--walkable-within` (75 m) from a walkable OSM way are dropped

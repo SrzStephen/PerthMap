@@ -915,6 +915,9 @@ def main() -> None:
     sp.add_argument("--workers", type=int, default=8, help="parallel intake-map downloads")
     sp.set_defaults(fn=lambda a: __import__("schools").schools_stage(a))  # lazy: schools imports this module
 
+    sp = sub.add_parser("hazards", help="hazard and noise layers on the travel-time grid")
+    sp.set_defaults(fn=lambda a: __import__("hazards").hazards_stage(a))  # lazy: hazards imports this module
+
     args = p.parse_args()
     args.fn(args)
 
