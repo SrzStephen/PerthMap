@@ -4,6 +4,7 @@ import {TravelTimeMap} from './components/map/TravelTimeMap'
 import {IntakeLayer} from './components/map/IntakeLayer'
 import {ControlCard, type Mode} from './components/panel/ControlCard'
 import {SchoolPicker} from './components/panel/SchoolPicker'
+import {FilterPanel} from './components/panel/FilterPanel'
 import {AddressSearch} from './components/panel/AddressSearch'
 import {RideOverlay} from './components/route/RideOverlay'
 import {RidePanel} from './components/route/RidePanel'
@@ -14,6 +15,8 @@ import {THRESHOLDS} from './lib/bands'
 import type {Place} from './lib/geocode'
 import {loadIndex, type DataIndex, type DayKey} from './lib/grid'
 import {intakeAt, intakeMask, loadSchoolData, type SchoolData} from './lib/schools'
+import {loadAttrs, type AttrData} from './lib/attrs'
+import {andMasks, availableFilters, filterMask, type ActiveFilters} from './lib/filters'
 import {useClickedRide} from './lib/useClickedRide'
 import {useClickedRoute} from './lib/useClickedRoute'
 import {useWindowData} from './lib/useWindowData'
@@ -37,9 +40,16 @@ function App() {
 
     const [schoolData, setSchoolData] = useState<SchoolData | 'loading' | 'error'>('loading')
     const [selected, setSelected] = useState<number[]>([])
-    const mask = useMemo(() => (typeof schoolData === 'object' ? intakeMask(schoolData, selected) : null),
-        [schoolData, selected])
+    const [attrData, setAttrData] = useState<AttrData | 'loading' | 'error'>('loading')
+    const [active, setActive] = useState<ActiveFilters>({})
+    const [shown, setShown] = useState<string[]>([])
+    const attrs = typeof attrData === 'object' ? attrData : null
+    const mask = useMemo(() => andMasks(
+        typeof schoolData === 'object' ? intakeMask(schoolData, selected) : null,
+        attrs ? filterMask(attrs, active) : null,
+    ), [schoolData, selected, attrs, active])
     const maskEmpty = useMemo(() => !!mask && !mask.some(v => v === 1), [mask])
+    const filtering = !!attrs && availableFilters(attrs).some(f => f.id in active)
 
     const {grid, bands, status, retry, loadedKey} = useWindowData(index, view, mask)
     const [clicked, setClicked] = useState<[number, number] | null>(null)
@@ -62,6 +72,14 @@ function App() {
         loadSchoolData(index.grid).then(setSchoolData, e => {
             console.error('loading school data', e)
             setSchoolData('error')
+        })
+    }, [index])
+
+    useEffect(() => {
+        if (!index) return
+        loadAttrs(index.grid).then(setAttrData, e => {
+            console.error('loading hazard data', e)
+            setAttrData('error')
         })
     }, [index])
 
@@ -104,7 +122,13 @@ function App() {
                 filters={<>
                     <AddressSearch onSelect={onPlace}/>
                     {loaded && (
-                        <SchoolPicker schools={loaded.schools} selected={selected} onChange={setSelected} empty={maskEmpty}/>
+                        <SchoolPicker schools={loaded.schools} selected={selected} onChange={setSelected}
+                                      empty={maskEmpty && !filtering}/>
+                    )}
+                    {attrs && (
+                        <FilterPanel layers={attrs.layers.filter(l => l.field in attrs.fields)}
+                                     filters={availableFilters(attrs)} active={active} onChange={setActive}
+                                     shown={shown} onShownChange={setShown} empty={maskEmpty}/>
                     )}
                 </>}
             >
