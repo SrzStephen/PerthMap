@@ -159,7 +159,7 @@ export function ControlCard(props: ControlCardProps) {
                         >
                             About
                         </a>
-                        {' · '}Data: Transperth GTFS, © OpenStreetMap, © Esri, intake areas © Dept of Education WA (CC BY 4.0)
+                        {' · '}Data: Transperth GTFS, © OpenStreetMap, © Esri, intake areas © Dept of Education WA (CC BY 4.0), bushfire areas OBRM-026 and traffic counts © Main Roads WA (CC BY 4.0)
                     </footer>
                 </>
             )}

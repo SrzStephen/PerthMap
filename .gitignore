@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# personal-use-only layers (data_gen hazards stage): local build only, never commit or deploy
+public/data/local/

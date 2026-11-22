@@ -31,6 +31,19 @@ the parts of their intake areas within your travel time. Intake areas are extrac
 Education's intake maps (310 of the 403 metro public schools; the rest have no usable map), so they are approximate:
 near a boundary, check the [official lookup](https://www.det.wa.edu.au/schoolsonline/home.do).
 
+### Hazards and noise
+The report also lists whether the point is bushfire prone, the busiest counted road within 200 m and the distance to
+the nearest powerline or substation. Under *Hazards & noise*, tick filters (not bushfire prone, no road over 20k
+vehicles/day within 200 m, ≥ 200 m from powerlines…) to shade only the areas that pass, and use the eye to draw a
+layer on the map. Values are per 100 m grid cell.
+
+### Local build
+Some useful WA layers are licensed for personal use only, so the public site can't show them: acid sulfate soils
+(DWER-055) and State Planning Policy 5.4 road/rail noise areas (DPLH-057). The `hazards` stage writes them to
+`data_gen/data/results/web/local/`; copy that to `public/data/local/` (git-ignored) and run `npm run dev:local`
+(or `npm run build:local`). A normal `npm run build` deletes `dist/data/local`, and the public report links to
+[PlanWA](https://espatial.dplh.wa.gov.au/PlanWA/Index.html?viewer=PlanWA) instead.
+
 ### On a phone
 <img src="doc/mobile.png" alt="Mobile view with the controls in a bottom sheet" width="260">
 
@@ -44,11 +57,13 @@ near a boundary, check the [official lookup](https://www.det.wa.edu.au/schoolson
 * React-Leaflet + Vite + Tailwind for data presentation, on Esri's Light Gray Canvas basemap
 * Local intake areas © [Department of Education WA](https://www.det.wa.edu.au/schoolsonline/home.do), CC BY 4.0,
   derived from its intake maps; school locations DET-024 (CC BY-NC 4.0) via [DataWA/SLIP](https://data.wa.gov.au)
+* Bushfire prone areas OBRM-026 (CC BY 4.0) via [DataWA/SLIP](https://data.wa.gov.au); traffic counts
+  © [Main Roads WA](https://www.mainroads.wa.gov.au) Traffic Digest (CC BY 4.0); powerlines © OpenStreetMap contributors (ODbL)
 * Address search by [Nominatim](https://nominatim.org) (© OpenStreetMap contributors), on submit only
 
 # Data
 See [data_gen](data_gen/README.md) for how to generate data (`docker compose up --build route`, `docker compose run --rm route bike`,
-`docker compose run --rm --no-deps route schools`, then copy `data_gen/data/results/web/` to `public/data/`). The site is static: each window is a small gzipped travel-time grid
+`docker compose run --rm --no-deps route schools`, `docker compose run --rm --no-deps route hazards`, then copy `data_gen/data/results/web/` to `public/data/`). The site is static: each window is a small gzipped travel-time grid
 plus a route table, fetched on demand and contoured in the browser.
 
 # Checks

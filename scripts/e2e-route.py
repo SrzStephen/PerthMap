@@ -83,6 +83,9 @@ def main() -> None:
         expect(report).to_contain_text("Approximate — from DoE maps")
         expect(report).to_contain_text("Best")
         assert page.locator(".leaflet-intake-pane path").count() > 0, "intake area not drawn"
+        expect(report.get_by_role("heading", name="Hazards")).to_be_visible()
+        expect(report).to_contain_text("ushfire prone")
+        expect(report).to_contain_text("Acid sulfate soils: local build only")  # public build
         if args.screenshots:
             page.screenshot(path=f"{args.screenshots}/e2e-report.png")
         page.keyboard.press("Escape")
@@ -94,6 +97,20 @@ def main() -> None:
         wait_ready(page)
         if args.screenshots:
             page.screenshot(path=f"{args.screenshots}/e2e-intake.png")
+        page.get_by_role("button", name="Remove Wembley Primary School").click()
+
+        # hazard filters and layers
+        page.get_by_role("button", name="Hazards & noise").click()
+        page.get_by_role("checkbox", name="Not bushfire prone").check()
+        expect(page.get_by_role("button", name="Hazards & noise (1 on)")).to_be_visible()
+        wait_ready(page)
+        page.get_by_role("button", name="Show Bushfire prone areas").click()
+        expect(page.locator(".leaflet-attr-bushfire-pane img")).to_have_count(1)
+        page.get_by_role("button", name="Show Powerlines and substations").click()
+        page.wait_for_function(
+            "document.querySelectorAll('.leaflet-lines-powerlines-json-pane path').length > 0", timeout=15000)
+        if args.screenshots:
+            page.screenshot(path=f"{args.screenshots}/e2e-hazards.png")
 
         if args.screenshots:
             mobile = browser.new_page(viewport={"width": 390, "height": 844}, is_mobile=True, device_scale_factor=2)

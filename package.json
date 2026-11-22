@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "VITE_LOCAL_LAYERS=1 vite",
     "build": "tsc -b && vite build",
+    "build:local": "tsc -b && VITE_LOCAL_LAYERS=1 vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
