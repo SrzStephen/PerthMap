@@ -1,7 +1,7 @@
 import 'leaflet/dist/leaflet.css'
 import {useCallback, useEffect, useMemo, useState} from 'react'
 import {TravelTimeMap} from './components/map/TravelTimeMap'
-import {IntakeLayer} from './components/map/IntakeLayer'
+import {IntakeLayer, IntakeLegend} from './components/map/IntakeLayer'
 import {AttrRasterLayer} from './components/map/AttrRasterLayer'
 import {LineLayer} from './components/map/LineLayer'
 import {ControlCard, type Mode} from './components/panel/ControlCard'
@@ -133,10 +133,11 @@ function App() {
                     const line = LINE_LAYERS[id]
                     return line ? <LineLayer key={id} file={line.file} colour={line.colour} weight={line.weight}/> : null
                 })}
-                {loaded && <IntakeLayer areas={loaded.areas} selected={selected} highlight={highlight}/>}
+                {loaded && <IntakeLayer areas={loaded.areas} schools={loaded.schools} selected={selected} highlight={highlight}/>}
                 {route && <RouteOverlay point={route.point} result={route.result} routes={route.routes} stops={route.stops}/>}
                 {ride && <RideOverlay point={ride.point} result={ride.result}/>}
             </TravelTimeMap>
+            {loaded && (selected.length > 0 || highlight.length > 0) && <IntakeLegend/>}
             <ControlCard
                 times={THRESHOLDS} minutes={minutes} onMinutesChange={setMinutes}
                 days={days} day={day} onDayChange={setDay}

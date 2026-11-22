@@ -2,6 +2,8 @@
 import {cellAt, dataUrl, fetchJson, gunzip, type GridMeta} from './grid'
 
 export const NO_SCHOOL = 0xffff
+/** Intake outline colours on the map; K–12 schools use the primary colour. */
+export const INTAKE_COLOURS = {primary: '#0f766e', secondary: '#4338ca'}
 const MAGIC = 'PMI1'
 const VERSION = 1
 const HEADER = 14

@@ -129,3 +129,24 @@ body {
 .pixelated {
     image-rendering: pixelated;
 }
+
+/* school name on its intake area outline: coloured text with a white halo, no box */
+.leaflet-tooltip.intake-label {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    text-shadow: 0 0 2px #fff, 0 0 3px #fff, 0 0 4px #fff, 0 0 6px #fff;
+}
+.leaflet-tooltip.intake-label::before {
+    display: none;
+}
+.leaflet-tooltip.intake-label-primary {
+    color: #0f766e;
+}
+.leaflet-tooltip.intake-label-secondary {
+    color: #4338ca;
+}
