@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!pipeline.py
+!bike.py
+!elevation.py
+!data/pyproject.toml
+!data/uv.lock

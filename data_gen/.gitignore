@@ -1,0 +1,5 @@
+data/input/
+data/motis/
+data/results/
+__pycache__/
+.pytest_cache/

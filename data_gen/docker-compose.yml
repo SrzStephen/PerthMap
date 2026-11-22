@@ -1,0 +1,52 @@
+# PerthMap data generation with MOTIS.
+#
+#   cd data_gen
+#   docker compose up --build route   # prepare -> motis import -> motis server -> route
+#   cp -r data/results/web/. ../public/data/
+#   docker compose down
+#
+# Everything (downloads, MOTIS index, results) lives in ./data, which is git-ignored.
+# Drop an existing australia-latest.osm.pbf into data/input/ to skip the ~900 MB download.
+# The MOTIS web UI is at http://localhost:8080 while the server is up - handy for spot checks.
+
+x-user: &user "${HOST_UID:-1000}:${HOST_GID:-1000}"
+
+services:
+  prepare:
+    build: .
+    user: *user
+    command: ["prepare"]
+    volumes: ["./data:/data"]
+
+  motis-import:
+    image: ghcr.io/motis-project/motis:2.11.4
+    user: *user
+    working_dir: /data/motis
+    entrypoint: ["/motis", "import", "-c", "/data/motis/config.yml", "-d", "/data/motis/index"]
+    volumes: ["./data:/data"]
+    depends_on:
+      prepare: { condition: service_completed_successfully }
+
+  motis:
+    image: ghcr.io/motis-project/motis:2.11.4
+    user: *user
+    entrypoint: ["/motis", "server", "-d", "/data/motis/index"]
+    ports: ["8080:8080"]
+    volumes: ["./data:/data"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 5s
+      retries: 60
+    depends_on:
+      motis-import: { condition: service_completed_successfully }
+
+  route:
+    build: .
+    user: *user
+    command: ["route"]
+    environment:
+      MOTIS_URL: http://motis:8080
+      GRID_SPACING: ${GRID_SPACING:-0.001}
+    volumes: ["./data:/data"]
+    depends_on:
+      motis: { condition: service_healthy }
